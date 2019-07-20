@@ -1,0 +1,7 @@
+Gene	Exons	Codons
+KRAS		12-13
+EGFR	19
+BRCA1
+BRCA2
+NRAS	2-4
+BRAF		600,469,466

@@ -1,0 +1,5 @@
+For F:
+acacgacgctcttccgatct
+For R:
+gacgtgtgctcttccgatct
+
