@@ -4,7 +4,9 @@ It includes three Python-scripts:
 * **NGS_primerplex.py** - script that designs primers for the user defined genome coordinates.
 * **addSeqToPrimers.py** - script that adds adapter sequences for all of the designed primers.
 ## Docker use (RECOMMENDED!)
-NGS-PrimerPlex can be run as a [Docker](https://www.docker.com) image. In this way you only need to [install Docker](https://docs.docker.com/install/) and download image of NGS-PrimerPlex that contains all necessary modules and reference files:
+NGS-PrimerPlex can be run as a [Docker](https://www.docker.com) image. In this way you only need to [install Docker](https://docs.docker.com/install/) (for windows 7 users [this install steps](https://docs.docker.com/toolbox/toolbox_install_windows/) should be performed). If you have "VD-x, VD-t error", you need to turn on virtualization in BIOS CPU section.
+
+And then download image of NGS-PrimerPlex that contains all necessary modules and reference files:
 
 `docker pull aakechin/ngs-primerplex`
 
