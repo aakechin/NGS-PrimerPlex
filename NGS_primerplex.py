@@ -1139,7 +1139,8 @@ def checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regio
 def analyzePrimersForCrossingSNP(primersInfo,threads,localGenomeDB={},genomeVersion='hg19'):
     p=ThreadPool(threads)
     results=[]
-    for primers,info in primersInfo.items():
+    for primers,info in sorted(primersInfo.items(),
+                               key=lambda item:(item[1][4],item[1][0][0][0])):
         primer1,primer2=primers.split('_')
         chrom=info[4]
         try:
@@ -1177,51 +1178,56 @@ def analyzePrimersForCrossingSNP(primersInfo,threads,localGenomeDB={},genomeVers
 # checkPrimerForCrossingSNP checks, if primer crosses some SNPs with high frequence in population
 def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,localGenomeDB={},freq=0.1,genomeVersion='hg19'):
     mv=myvariant.MyVariantInfo()
-    # We only filter out primers that crosses SNP by 3'-end
-    nuc=primer[-1]
-    if strand>0:
-        coordStr='_'.join([str(chrom),str(end)])
-    else:
-        coordStr='_'.join([str(chrom),str(start)])
-    if coordStr not in localGenomeDB.keys():
-        try:
-            if strand>0:
-                mvRes=mv.query('dbsnp.chrom:'+str(chrom)+' && dbsnp.'+genomeVersion+'.start:'+str(end),fields='dbsnp')
-                coord=end
-            else:
-                mvRes=mv.query('dbsnp.chrom:'+str(chrom)+' && dbsnp.'+genomeVersion+'.start:'+str(start),fields='dbsnp')
-                coord=start
-        except:
-            print('ERROR! Could not check primer for crossing SNPs with the following parameters:')
-            print(primer,chrom,start,end,strand)
-            exit(1)
-        hfSnpFound=False
-        for hit in mvRes['hits']:
-            if 'gmaf' not in hit['dbsnp'].keys(): continue
-            alFreqs={}
-            for al in hit['dbsnp']['alleles']:
-                if 'freq' not in al.keys(): continue
-                try:
-                    alFreqs[al['allele']]=al['freq']
-                except KeyError:
-                    print('ERROR!',mvRes); exit(1)
-            ref=hit['dbsnp']['ref']
-            alt=hit['dbsnp']['alt']
-            if alt not in alFreqs.keys(): continue
-            try:
-                if alFreqs[alt]>=freq:
-                    hfSnpFound=True
-            except KeyError:
-                print('ERROR of key:',alFreqs)
-                print(mvRes)
-                exit(1)
-        if coordStr not in localGenomeDB.keys():
-            localGenomeDB[coordStr]=hfSnpFound
+    # Previously, we only filtered out primers that crossed SNP by 3'-end
+    # Now, we filter primers that cross SNP by any of its sequence
+    for i,coord in enumerate(range(start,end+1)):
+        if strand>0:
+            nuc=primer[i]
+##            coordStr='_'.join([str(chrom),str(coord)])
         else:
-            localGenomeDB[coordStr]=hfSnpFound
-        return(primer,hfSnpFound,localGenomeDB)
-    else:
-        return(primer,localGenomeDB[coordStr],localGenomeDB)
+            nuc=primer[-(i+1)]
+        coordStr='_'.join([str(chrom),str(coord)])
+        if coordStr not in localGenomeDB.keys():
+            try:
+                if strand>0:
+                    mvRes=mv.query('dbsnp.chrom:'+str(chrom)+' && dbsnp.'+genomeVersion+'.start:'+str(coord),fields='dbsnp')
+                    coord=end
+                else:
+                    mvRes=mv.query('dbsnp.chrom:'+str(chrom)+' && dbsnp.'+genomeVersion+'.start:'+str(coord),fields='dbsnp')
+                    coord=start
+            except:
+                print('ERROR! Could not check primer for crossing SNPs with the following parameters:')
+                print(primer,chrom,start,end,strand)
+                exit(1)
+            hfSnpFound=False
+            for hit in mvRes['hits']:
+                if 'gmaf' not in hit['dbsnp'].keys(): continue
+                alFreqs={}
+                for al in hit['dbsnp']['alleles']:
+                    if 'freq' not in al.keys(): continue
+                    try:
+                        alFreqs[al['allele']]=al['freq']
+                    except KeyError:
+                        print('ERROR!',mvRes); exit(1)
+                ref=hit['dbsnp']['ref']
+                alt=hit['dbsnp']['alt']
+                if alt not in alFreqs.keys(): continue
+                try:
+                    if alFreqs[alt]>=freq:
+                        hfSnpFound=True
+                except KeyError:
+                    print('ERROR of key:',alFreqs)
+                    print(mvRes)
+                    exit(1)
+            if coordStr not in localGenomeDB.keys():
+                localGenomeDB[coordStr]=hfSnpFound
+            else:
+                localGenomeDB[coordStr]=hfSnpFound
+            if hfSnpFound:
+                return(primer,hfSnpFound,localGenomeDB)
+        else:
+            return(primer,localGenomeDB[coordStr],localGenomeDB)
+    return(primer,hfSnpFound,localGenomeDB)
 
 # joinAmpliconsToAmplifiedBlocks joins neighbourhing or overlapping amplicons to blocks
 # Minimal path is a path of one primer:
@@ -1347,7 +1353,7 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
             g1=blockGraph.subgraph(path)
             shortestPaths={path:g1.size(weight='weight')}
             minPathLen=len(path)
-            maxAnalysisVars=10000
+            maxAnalysisVars=100
             analysisNum=0
             while(True):
                 analysisNum+=1
