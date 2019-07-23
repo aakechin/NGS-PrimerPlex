@@ -240,8 +240,13 @@ for key,value in nucs.items():
         nucs[key][j][0]=l[0]*3-2
         nucs[key][j][1]=l[1]*3
 resultFile=open(args.resultFile,'w')
-transcriptPat=re.compile('transcript variant ([X\da-z]+)')
+transcriptPat=re.compile('transcript variant ([A-z\d]+)')
 isoformPat=re.compile('isoform ([X\da-z]+)')
+# Dictionary that stores genes and their main transcript accession numbers
+mainTrascripts={'NRG1':'NM_013957.'}
+mainProteins={'NRG1':'NP_039251.'}
+## TO DO:
+# Maybe add this values to input table for such complex genes?
 for t in targetGenes:
     print(t)
     try:
@@ -262,7 +267,15 @@ for t in targetGenes:
             synonyms=f.qualifiers['gene_synonym'][0].split('; ')
         if len(mRNA_exons)==0 and ((('gene' in f.qualifiers.keys() and f.qualifiers['gene'][0]==t) or ('gene_synonym' in f.qualifiers.keys() and t in synonyms)) and
             f.type=='mRNA' and ('product' in f.qualifiers.keys())):
-            if (len(transcriptPat.findall(f.qualifiers['product'][0]))==0 or
+            if (t in mainTrascripts.keys() and
+                'transcript_id' in f.qualifiers.keys() and
+                mainTrascripts[t] in f.qualifiers['transcript_id'][0]):
+                mRNA_exons=f.location.parts
+                if args.includeNonCoding and t not in codons.keys():
+                    geneFound=True
+                    writeRegions(resultFile,t,mRNA_exons,None,codons,exons,nucs)
+                    break
+            elif (len(transcriptPat.findall(f.qualifiers['product'][0]))==0 or
                 transcriptPat.findall(f.qualifiers['product'][0])[0]=='1' or
                 transcriptPat.findall(f.qualifiers['product'][0])[0]=='a'):
                 mRNA_exons=f.location.parts
@@ -276,9 +289,18 @@ for t in targetGenes:
                 except ValueError:
                     key=transcriptPat.findall(f.qualifiers['product'][0])[0]
                 several_mRNA_isoforms[key]=f.location.parts
-        if ((('gene' in f.qualifiers.keys() and f.qualifiers['gene'][0]==t) or ('gene_synonym' in f.qualifiers.keys() and t in synonyms)) and
-            f.type=='CDS' and ('product' in f.qualifiers.keys() and
-                               (len(isoformPat.findall(f.qualifiers['product'][0]))==0 or isoformPat.findall(f.qualifiers['product'][0])[0]=='1' or isoformPat.findall(f.qualifiers['product'][0])[0]=='a'))):
+        if ((('gene' in f.qualifiers.keys() and
+              f.qualifiers['gene'][0]==t) or
+             ('gene_synonym' in f.qualifiers.keys() and
+              t in synonyms)) and
+            f.type=='CDS' and
+            ((t in mainProteins.keys() and
+              'protein_id' in f.qualifiers.keys() and
+              mainProteins[t] in f.qualifiers['protein_id'][0]) or
+             ('product' in f.qualifiers.keys() and
+              (len(isoformPat.findall(f.qualifiers['product'][0]))==0 or
+               isoformPat.findall(f.qualifiers['product'][0])[0]=='1' or
+               isoformPat.findall(f.qualifiers['product'][0])[0]=='a')))):
             geneFound=True
             if len(mRNA_exons)==0 and len(several_mRNA_isoforms)==0:
                 print('ERROR: mRNA feature was not found in the GenBank file '+refDir+'chr'+chrs[t]+'.gb for the gene '+t+'!')
