@@ -196,7 +196,7 @@ org=args.organism
 intronSize=args.intronSize
 
 # Read input file
-print('Reading input file...')
+print('Reading input file and getting chromosome numbers...')
 targetGenes=[]
 chrs={}
 codons={}
@@ -206,6 +206,7 @@ for string in geneListFile:
     if 'Gene\tExons' in string:
         continue
     cols=string[:-1].split('\t')
+    print(cols[0])
     targetGenes.append(cols[0])
     chrs[cols[0]]=getChrNum(cols[0],org)
     if chrs[cols[0]]==None:
@@ -241,12 +242,14 @@ for key,value in nucs.items():
         nucs[key][j][1]=l[1]*3
 resultFile=open(args.resultFile,'w')
 transcriptPat=re.compile('transcript variant ([A-z\d]+)')
-isoformPat=re.compile('isoform ([X\da-z]+)')
+# For some genes word "isoform" is repeated in a GB-file
+isoformPat=re.compile('(?:isoform )+([X\da-z]+)')
 # Dictionary that stores genes and their main transcript accession numbers
 mainTrascripts={'NRG1':'NM_013957.'}
 mainProteins={'NRG1':'NP_039251.'}
 ## TO DO:
 # Maybe add this values to input table for such complex genes?
+print('Getting genome regions for the input genes...')
 for t in targetGenes:
     print(t)
     try:
@@ -260,7 +263,8 @@ for t in targetGenes:
     geneFound=False
     # several_mRNA_isoforms contains all saved mRNA isoforms for current gene
     ## And then we take one with the lowest number
-    several_mRNA_isoforms={}
+    several_mRNA_isoformsNums={}
+    several_mRNA_isoformsWords={}
     mRNA_exons=[]
     for f in data.features:
         if 'gene_synonym' in f.qualifiers.keys():
@@ -270,6 +274,7 @@ for t in targetGenes:
             if (t in mainTrascripts.keys() and
                 'transcript_id' in f.qualifiers.keys() and
                 mainTrascripts[t] in f.qualifiers['transcript_id'][0]):
+##                print('mRNA1')
                 mRNA_exons=f.location.parts
                 if args.includeNonCoding and t not in codons.keys():
                     geneFound=True
@@ -279,40 +284,65 @@ for t in targetGenes:
                 transcriptPat.findall(f.qualifiers['product'][0])[0]=='1' or
                 transcriptPat.findall(f.qualifiers['product'][0])[0]=='a'):
                 mRNA_exons=f.location.parts
+##                print('mRNA2')
                 if args.includeNonCoding and t not in codons.keys():
                     geneFound=True
                     writeRegions(resultFile,t,mRNA_exons,None,codons,exons,nucs)
                     break
             elif len(transcriptPat.findall(f.qualifiers['product'][0]))>0:
+##                print('mRNA3')
                 try:
                     key=int(transcriptPat.findall(f.qualifiers['product'][0])[0])
+                    several_mRNA_isoformsNums[key]=f.location.parts
                 except ValueError:
                     key=transcriptPat.findall(f.qualifiers['product'][0])[0]
-                several_mRNA_isoforms[key]=f.location.parts
+                    several_mRNA_isoformsWords[key]=f.location.parts
         if ((('gene' in f.qualifiers.keys() and
               f.qualifiers['gene'][0]==t) or
              ('gene_synonym' in f.qualifiers.keys() and
               t in synonyms)) and
-            f.type=='CDS' and
-            ((t in mainProteins.keys() and
-              'protein_id' in f.qualifiers.keys() and
-              mainProteins[t] in f.qualifiers['protein_id'][0]) or
-             ('product' in f.qualifiers.keys() and
-              (len(isoformPat.findall(f.qualifiers['product'][0]))==0 or
-               isoformPat.findall(f.qualifiers['product'][0])[0]=='1' or
-               isoformPat.findall(f.qualifiers['product'][0])[0]=='a')))):
-            geneFound=True
-            if len(mRNA_exons)==0 and len(several_mRNA_isoforms)==0:
-                print('ERROR: mRNA feature was not found in the GenBank file '+refDir+'chr'+chrs[t]+'.gb for the gene '+t+'!')
-                exit(1)
-            elif len(mRNA_exons)==0 and len(several_mRNA_isoforms)>0:
-                mRNA_exons=sorted(several_mRNA_isoforms.items())[0][1]
-                if args.includeNonCoding and t not in codons.keys():
-                    writeRegions(resultFile,t,mRNA_exons,None,codons,exons,nucs)
-                    break
-            writeRegions(resultFile,t,mRNA_exons,f.location.parts,codons,exons,nucs)
-            break
+            f.type=='CDS'):
+            if 'product' in f.qualifiers.keys():
+                isoformMatch=isoformPat.findall(f.qualifiers['product'][0])
+            else:
+                isoformMatch=[]
+            if 'note' in f.qualifiers.keys():
+                transcriptMatch=transcriptPat.findall(f.qualifiers['note'][0])
+            else:
+                transcriptMatch=[]
+##            print('CDS0',isoformMatch,f.qualifiers['product'][0],transcriptMatch,f.qualifiers['note'][0])
+            if ((t in mainProteins.keys() and
+                 'protein_id' in f.qualifiers.keys() and
+                 mainProteins[t] in f.qualifiers['protein_id'][0]) or
+                ('product' in f.qualifiers.keys() and
+                 (len(isoformMatch)==0 or
+                  isoformMatch[0]=='1' or
+                  isoformMatch[0]=='a')) or
+                ('note' in f.qualifiers.keys() and
+                 len(transcriptMatch)>0 and
+                 (transcriptMatch[0]=='1' or
+                  transcriptMatch[0]=='a'))):
+                geneFound=True
+##                print('CDS1')
+                if (len(mRNA_exons)==0 and
+                    len(several_mRNA_isoformsNums)==0 and
+                    len(several_mRNA_isoformsWords)==0):
+                    print('ERROR: mRNA feature was not found in the GenBank file '+refDir+'chr'+chrs[t]+'.gb for the gene '+t+'!')
+                    exit(1)
+                elif (len(mRNA_exons)==0 and
+                      (len(several_mRNA_isoformsNums)>0 or
+                       len(several_mRNA_isoformsWords)>0)):
+                    if len(several_mRNA_isoformsNums)>0:
+                        mRNA_exons=sorted(several_mRNA_isoformsNums.items())[0][1]
+                    else:
+                        mRNA_exons=sorted(several_mRNA_isoformsWords.items())[0][1]
+                    if args.includeNonCoding and t not in codons.keys():
+                        writeRegions(resultFile,t,mRNA_exons,None,codons,exons,nucs)
+                        break
+                writeRegions(resultFile,t,mRNA_exons,f.location.parts,codons,exons,nucs)
+                break
     if not geneFound:
         print('ERROR: gene with name "'+t+'" was not found in chromosome '+chrs[t])
         exit(0)
 resultFile.close()
+print('Done')

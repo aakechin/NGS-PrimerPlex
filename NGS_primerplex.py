@@ -448,7 +448,8 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,args,regionsCoords=
                 if len(regionsCoords[int(regionNameToChrom[regionWithoutPrimer])])==0:
                     regionsCoords.pop(int(regionNameToChrom[regionWithoutPrimer]))
                 allRegions[regionNameToChrom[regionWithoutPrimer]].pop(regionWithoutPrimer)
-                regionNameToChrom.pop(regionWithoutPrimer)                
+                regionNameToChrom.pop(regionWithoutPrimer)
+                amplNames.pop(regionWithoutPrimer)
             print('   '+regionWithoutPrimer)
             logger.info('   '+regionWithoutPrimer)
             print(primer3Params[regionWithoutPrimer][0][0]['SEQUENCE_TEMPLATE'])
