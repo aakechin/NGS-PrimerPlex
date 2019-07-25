@@ -1,7 +1,16 @@
 #!/usr/bin/python3
 # This script constructs primers for multiplex NGS panels
 
-import argparse,re,os,sys,primer3,math,logging,pysam,xlrd
+import argparse
+import re
+import os
+import sys
+import primer3
+import math
+import logging
+import pysam
+import xlrd
+from copy import deepcopy
 from multiprocessing.pool import ThreadPool
 from Bio import SeqIO,Seq,pairwise2
 import subprocess as sp
@@ -166,7 +175,7 @@ def createPrimer3_parameters(pointRegions,args,species='human',
                         'PRIMER_PAIR_WT_PRODUCT_SIZE_LT':2,
                         'PRIMER_EXPLAIN_FLAG':1}
     primer3Params={}
-    primerTags=templatePrimerTags.copy()
+    primerTags=deepcopy(templatePrimerTags)
     # Writing primer design parameters that user defined
     primerTags['PRIMER_MIN_SIZE']=args.minPrimerLen
     primerTags['PRIMER_MAX_SIZE']=args.maxPrimerLen
@@ -251,7 +260,7 @@ def createPrimer3_parameters(pointRegions,args,species='human',
                     # Force location of the left primer to the close proximity to target
                     primerPairOkRegion=[[targetRegionStart-args.maxPrimerLen-2,args.maxPrimerLen+2,targetRegionEnd+1,len(regionSeq)-targetRegionEnd-1]]
                 seqTags['SEQUENCE_PRIMER_PAIR_OK_REGION_LIST']=primerPairOkRegion
-                primer3Params[amplName].append([seqTags.copy(),primerTags.copy()])
+                primer3Params[amplName].append([deepcopy(seqTags),deepcopy(primerTags)])
         return(primer3Params,amplToChrom,amplToStartCoord)
     else:
         primerTags['PRIMER_PRODUCT_SIZE_RANGE']=[[args.minAmplLen,args.maxAmplLen]]
@@ -304,7 +313,7 @@ def createPrimer3_parameters(pointRegions,args,species='human',
                 if start==prevEnd+1:                    
                     primerPairOkRegion=[[args.maxAmplLen-args.maxPrimerLen-2,args.maxPrimerLen+2,args.maxAmplLen+1+end-start,len(regionSeq)-args.maxAmplLen-1-(end-start)]]
                     seqTags['SEQUENCE_PRIMER_PAIR_OK_REGION_LIST']=primerPairOkRegion
-                    primer3Params[curRegionName].append([seqTags.copy(),primerTags.copy()])
+                    primer3Params[curRegionName].append([deepcopy(seqTags),deepcopy(primerTags)])
                 else:
                     # We create 3 sets of primer pairs, that will be located in three variants:
                     ## --------------------Mut--------------------
@@ -322,7 +331,7 @@ def createPrimer3_parameters(pointRegions,args,species='human',
                         else:
                             primerPairOkRegion=[[0,args.maxAmplLen-1,args.maxAmplLen+1+end-start,len(regionSeq)-args.maxAmplLen-1-(end-start)]]
                         seqTags['SEQUENCE_PRIMER_PAIR_OK_REGION_LIST']=primerPairOkRegion
-                        primer3Params[curRegionName].append([seqTags.copy(),primerTags.copy()])
+                        primer3Params[curRegionName].append([deepcopy(seqTags),deepcopy(primerTags)])
                 prevEnd=end
         return(primer3Params)
 
@@ -448,6 +457,8 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,args,regionsCoords=
                 if len(regionsCoords[int(regionNameToChrom[regionWithoutPrimer])])==0:
                     regionsCoords.pop(int(regionNameToChrom[regionWithoutPrimer]))
                 allRegions[regionNameToChrom[regionWithoutPrimer]].pop(regionWithoutPrimer)
+                if len(allRegions[regionNameToChrom[regionWithoutPrimer]])==0:
+                    allRegions.pop(regionNameToChrom[regionWithoutPrimer])
                 regionNameToChrom.pop(regionWithoutPrimer)
                 amplNames.pop(regionWithoutPrimer)
             print('   '+regionWithoutPrimer)
@@ -717,7 +728,7 @@ def getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom):
     # primersInfoByChrom[int(chrom)]['_'.join(primerSeqs[2*i:2*i+2])]=primersCoords[2*i:2*i+2]
     amplNames={}
     primersToAmplNames={}
-    uncoveredRegions=allRegions.copy()
+    uncoveredRegions=deepcopy(allRegions)
     for chrom,coords in primersInfoByChrom.items():
         coordToRegionName={}
         for regionCoords in allRegions[str(chrom)].values():
@@ -765,7 +776,7 @@ def getRegionsUncoveredByDraftExternalPrimers(primersInfo,primersInfoByChrom,out
                                            # leftGC,rightGC,outputInternalPrimers[curRegionName][7]-(start+primersCoords[0][1])+1,
                                            # end-primersCoords[1][1]-outputInternalPrimers[curRegionName][8]+1,extendedAmplSeq]]
     outputExternalPrimers={}
-    uncoveredInternalPrimers=outputInternalPrimers.copy()
+    uncoveredInternalPrimers=deepcopy(outputInternalPrimers)
     amplToChrom={}
     amplToStartCoord={}
     refFa=pysam.FastaFile(args.wholeGenomeRef)
@@ -1110,7 +1121,7 @@ def removeBadPrimerPairs(primersInfoByChrom,goodPrimers,primersToAmplNames,amplN
                 for amplName in amplNamesToDelete:
                     curRegionName=amplName[:amplName.rfind('_')]
                     amplNames[curRegionName].remove(amplName)
-    primersInfoByChrom=newPrimersInfoByChrom.copy()
+    primersInfoByChrom=deepcopy(newPrimersInfoByChrom)
     return(primersInfoByChrom,amplNames)
 
 def checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regionsCoords,filterMessage='by specificity',skipUndesigned=False):
@@ -1119,12 +1130,21 @@ def checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regio
     for curRegionName,ampls in amplNames.items():
         if len(ampls)==0:
             if skipUndesigned:
-                print('WARNING! For input region '+curRegionName+' ('+' '.join(list(map(str,allRegions[regionNameToChrom[curRegionName]][curRegionName])))+') no primers left after filtering primers '+filterMessage+'! Try to increase -primernum1 parameter. Or if you have already tried, use less stringent parameters.')
+                try:
+                    print('WARNING! For input region '+curRegionName+' ('+' '.join(list(map(str,allRegions[regionNameToChrom[curRegionName]][curRegionName])))+') no primers left after filtering primers '+filterMessage+'! Try to increase -primernum1 parameter. Or if you have already tried, use less stringent parameters.')
+                except KeyError:
+                    print('KeyError:',curRegionName)
+                    print(curRegionName in regionNameToChrom.keys())
+                    print(regionNameToChrom[curRegionName] in allRegions.keys())
+                    print(curRegionName in allRegions[regionNameToChrom[curRegionName]].keys())
+                    exit(1)
                 logger.warn('For input region '+curRegionName+' ('+' '.join(list(map(str,allRegions[regionNameToChrom[curRegionName]][curRegionName])))+') no primers left after filtering primers '+filterMessage+'! Try to increase -primernum1 parameter. Or if you have already tried, use less stringent parameters.')
                 regionsCoords[int(regionNameToChrom[curRegionName])].remove(allRegions[regionNameToChrom[curRegionName]][curRegionName][1])
                 if len(regionsCoords[int(regionNameToChrom[curRegionName])])==0:
                     regionsCoords.pop(int(regionNameToChrom[curRegionName]))
                 allRegions[regionNameToChrom[curRegionName]].pop(curRegionName)
+                if len(allRegions[regionNameToChrom[curRegionName]])==0:
+                    allRegions.pop(regionNameToChrom[curRegionName])
                 regionNameToChrom.pop(curRegionName)
             else:
                 newAmplNames[curRegionName]=ampls
@@ -1261,7 +1281,7 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
         amplBlockStart1=primers1[0][0]+primers1[0][1]
         amplBlockEnd1=primers1[1][0]-primers1[1][1]
         # Get block number
-        coords=chromRegionsCoords.copy()
+        coords=deepcopy(chromRegionsCoords)
         coords.append(amplBlockStart1)
         amplBlockStart1_num=sorted(coords).index(amplBlockStart1)
         if amplBlockStart1_num==0:
@@ -1291,11 +1311,11 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
         # Get index of the last mutation that is covered by this primers pair
         ## Extract the last position of amplBlock, insert it to list and get index
         if not lastMut:
-            coords=chromRegionsCoords.copy()
+            coords=deepcopy(chromRegionsCoords)
             coords.append(amplBlockEnd1)
             lastMutNum1=sorted(coords).index(amplBlockEnd1)-1
         if not firstMut:
-            coords=chromRegionsCoords.copy()
+            coords=deepcopy(chromRegionsCoords)
             coords.append(amplBlockStart1)
             firstMutNum1=sorted(coords).index(amplBlockStart1)
         for primerPairName2,primers2 in sorted(chromPrimersInfoByChrom.items(),key=lambda item:item[1][0][0])[i+1:]:
@@ -1390,7 +1410,7 @@ def makeFinalMultiplexes(initialGraph,multiplexes=[],multNum=2):
     elif (len(initialGraph.nodes())==multNum and
           len(multiplexes)==0):
         return([[x] for x in initialGraph.nodes()])
-    graph=initialGraph.copy()
+    graph=deepcopy(initialGraph)
     nodesNums={}
     for node in graph.nodes():
         nodesNums[node]=graph.degree(node)
@@ -1448,7 +1468,7 @@ def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,ar
             for z,cl in enumerate(cls):
                 print('Number of amplicons in multiplex',mults[z],len(cl))
                 logger.warn('  # Number of amplicons in multiplex '+mults[z]+': '+str(len(cl)))
-            leftNodesGraph=localMultiplexNums.copy()
+            leftNodesGraph=deepcopy(localMultiplexNums)
             leftNodesGraph.remove_nodes_from(allSortedAmpls)
             print('  But the following '+str(len(leftNodesGraph.nodes()))+' amplicons could not be sorted to any of designed multiplex:')
             logger.warn('  But the following '+str(len(leftNodesGraph.nodes()))+' amplicons could not be sorted to any of designed multiplex:')
@@ -1982,7 +2002,7 @@ if args.primersFile:
                 for z,cl in enumerate(cls):
                     print('Number of amplicons in multiplex',mults[z],len(cl))
                     logger.warn('  # Number of amplicons in multiplex '+mults[z]+': '+str(len(cl)))
-                leftNodesGraph=localMultiplexNums.copy()
+                leftNodesGraph=deepcopy(localMultiplexNums)
                 leftNodesGraph.remove_nodes_from(allSortedAmpls)
                 print('  But the following '+str(len(leftNodesGraph.nodes()))+' amplicons could not be sorted to any of designed multiplex:')
                 logger.warn('  But the following '+str(len(leftNodesGraph.nodes()))+' amplicons could not be sorted to any of designed multiplex:')
@@ -2565,7 +2585,7 @@ else:
                         for z,cl in enumerate(cls):
                             print('Number of amplicons in multiplex',mults[z],len(cl))
                             logger.warn('  # Number of amplicons in multiplex '+mults[z]+': '+str(len(cl)))
-                        leftNodesGraph=localMultiplexNums.copy()
+                        leftNodesGraph=deepcopy(localMultiplexNums)
                         leftNodesGraph.remove_nodes_from(allSortedAmpls)
                         print('  But the following '+str(len(leftNodesGraph.nodes()))+' amplicons could not be sorted to any of designed multiplex:')
                         logger.warn('  But the following '+str(len(leftNodesGraph.nodes()))+' amplicons could not be sorted to any of designed multiplex:')
