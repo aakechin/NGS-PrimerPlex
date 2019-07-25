@@ -1276,8 +1276,10 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
     # Add first mutation as the first node and search for primer pairs that cover it
     ## Also for each primer pair we search for primer pairs that cover the next input position
     ### For each edge we add weight, that describes farness from that edge
+    comparisonNum=0
     for i,(primerPairName1,primers1) in enumerate(sorted(chromPrimersInfoByChrom.items(),
-                                                         key=lambda item:item[1][0][0])):
+                                                         key=lambda item:(item[1][0][0],
+                                                                          item[1][1][0]))):
         primerName1,primerName2=primerPairName1.split('_')
         amplBlockStart1=primers1[0][0]+primers1[0][1]
         amplBlockEnd1=primers1[1][0]-primers1[1][1]
@@ -1311,18 +1313,26 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
             continue
         # Get index of the last mutation that is covered by this primers pair
         ## Extract the last position of amplBlock, insert it to list and get index
-        coords=deepcopy(blocks[blockNum])
-        coords.append(amplBlockEnd1)
-        lastMutNum1=sorted(coords).index(amplBlockEnd1)-1
-        coords=deepcopy(blocks[blockNum])
-        coords.append(amplBlockStart1)
-        firstMutNum1=sorted(coords).index(amplBlockStart1)
+        if amplBlockEnd1 in blocks[blockNum]:
+            lastMutNum1=sorted(coords).index(amplBlockEnd1)
+        else:
+            coords=deepcopy(blocks[blockNum])
+            coords.append(amplBlockEnd1)
+            lastMutNum1=sorted(coords).index(amplBlockEnd1)-1
+        if amplBlockStart1 in blocks[blockNum]:
+            firstMutNum1=sorted(blocks[blockNum]).index(amplBlockStart1)
+        else:
+            coords=deepcopy(blocks[blockNum])
+            coords.append(amplBlockStart1)
+            firstMutNum1=sorted(coords).index(amplBlockStart1)
         nextMutNotCovered=True
         prevMutNotCovered=True
         for primerPairName2,primers2 in sorted(chromPrimersInfoByChrom.items(),
-                                               key=lambda item:item[1][0][0])[i+1:]:
+                                               key=lambda item:(item[1][0][0],
+                                                                item[1][1][0]))[i+1:]:
             if primerPairName1==primerPairName2:
                 continue
+            comparisonNum+=1
             amplBlockStart2=primers2[0][0]+primers2[0][1]
             amplBlockEnd2=primers2[1][0]-primers2[1][1]
             nextMut=blocks[blockNum][min(lastMutNum1+1,len(blocks[blockNum])-1)]
@@ -1341,9 +1351,12 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
                 weight=maxAmplLen-min(50,primers1[0][0]-primers2[1][0]) # if distance is too large (>50), leave it as 50
                 blockGraph.add_edge(primerPairName1,primerPairName2,attr_dict={'weight':weight})
                 prevMutNotCovered=False
-        if nextMutNotCovered and prevMutNotCovered:
-            print(primerPairName1,primers1)
-            exit(1)
+##        if not lastMut and nextMutNotCovered:
+##            print(primerPairName1,primers1,nextMut)
+##            print(sorted(chromPrimersInfoByChrom.items(),
+##                         key=lambda item:(item[1][0][0],
+##                                          item[1][1][0]))[i+1:i+5])
+##    print(len(chromPrimersInfoByChrom.keys()),comparisonNum)
     blocksFinalShortestPaths=[]
     for i,blockGraph in enumerate(blockGraphs):
         if firstNodes[i]==lastNodes[i]:
