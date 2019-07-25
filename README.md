@@ -24,7 +24,7 @@ python3 NGS_primerplex.py -regions example_gene_list_file.regions.csv -wgref hg1
 ```
 This will give you primers that could be designed with the defined parameters. Then, you can use generated file with draft primers as -draft argument and defining less strict parameters for primer design.
 
-For uploading files to a container, you can use the following commands in another terminal (+open new docker terminal+):
+For uploading files to a container, you can use the following commands in another terminal (**open new docker terminal**):
 
 docker ps -a
 
