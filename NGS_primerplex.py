@@ -1258,7 +1258,7 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
     blocks=[[chromRegionsCoords[0]]]
     coordToBlock={} # converts coordinate into the number of block 
     for coord in chromRegionsCoords[1:]:
-        if coord>=blocks[-1][-1]+maxAmplLen:
+        if coord>=blocks[-1][-1]+maxAmplLen*2:
             blocks.append([coord])
         else:
             blocks[-1].append(coord)
@@ -1276,7 +1276,8 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
     # Add first mutation as the first node and search for primer pairs that cover it
     ## Also for each primer pair we search for primer pairs that cover the next input position
     ### For each edge we add weight, that describes farness from that edge
-    for i,(primerPairName1,primers1) in enumerate(sorted(chromPrimersInfoByChrom.items(),key=lambda item:item[1][0][0])):
+    for i,(primerPairName1,primers1) in enumerate(sorted(chromPrimersInfoByChrom.items(),
+                                                         key=lambda item:item[1][0][0])):
         primerName1,primerName2=primerPairName1.split('_')
         amplBlockStart1=primers1[0][0]+primers1[0][1]
         amplBlockEnd1=primers1[1][0]-primers1[1][1]
@@ -1310,42 +1311,39 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
             continue
         # Get index of the last mutation that is covered by this primers pair
         ## Extract the last position of amplBlock, insert it to list and get index
-        if not lastMut:
-            coords=deepcopy(chromRegionsCoords)
-            coords.append(amplBlockEnd1)
-            lastMutNum1=sorted(coords).index(amplBlockEnd1)-1
-        if not firstMut:
-            coords=deepcopy(chromRegionsCoords)
-            coords.append(amplBlockStart1)
-            firstMutNum1=sorted(coords).index(amplBlockStart1)
-        for primerPairName2,primers2 in sorted(chromPrimersInfoByChrom.items(),key=lambda item:item[1][0][0])[i+1:]:
-            if primerPairName1==primerPairName2: continue
+        coords=deepcopy(blocks[blockNum])
+        coords.append(amplBlockEnd1)
+        lastMutNum1=sorted(coords).index(amplBlockEnd1)-1
+        coords=deepcopy(blocks[blockNum])
+        coords.append(amplBlockStart1)
+        firstMutNum1=sorted(coords).index(amplBlockStart1)
+        nextMutNotCovered=True
+        prevMutNotCovered=True
+        for primerPairName2,primers2 in sorted(chromPrimersInfoByChrom.items(),
+                                               key=lambda item:item[1][0][0])[i+1:]:
+            if primerPairName1==primerPairName2:
+                continue
             amplBlockStart2=primers2[0][0]+primers2[0][1]
             amplBlockEnd2=primers2[1][0]-primers2[1][1]
-            # Calculate weight of this edge - distance between amplicons
-            if amplBlockStart1<=amplBlockStart2:
-                if lastMut: continue
-                nextMut=chromRegionsCoords[lastMutNum1+1]
-                if not (amplBlockStart2<=nextMut<=amplBlockEnd2):
-                    continue
-                # If two amplicons overlap more than user defined
-                if amplBlockEnd1>=amplBlockStart2+args.maxoverlap:
-                    continue
-                # weight is a length of amplicons intersection or minus distance between them
-                ## Less weight is a worth, the more weight is better
+            nextMut=blocks[blockNum][min(lastMutNum1+1,len(blocks[blockNum])-1)]
+            prevMut=blocks[blockNum][max(firstMutNum1-1,0)]
+            if (not lastMut and
+                amplBlockStart2<=nextMut<=amplBlockEnd2 and
+                amplBlockEnd1<amplBlockStart2+args.maxoverlap):
+                # Calculate weight of this edge - distance between amplicons
                 weight=maxAmplLen-min(50,primers2[0][0]-primers1[1][0]) # if distance is too large (>50), leave it as 50
-            else:
-                if firstMut:
-                    continue
-                nextMut=chromRegionsCoords[max(firstMutNum1-1,0)]
-                if not (amplBlockStart2<=nextMut<=amplBlockEnd2):
-                    continue
-                if amplBlockEnd2>=amplBlockStart1+args.maxoverlap:
-                    continue
+                blockGraph.add_edge(primerPairName1,primerPairName2,attr_dict={'weight':weight})
+                nextMutNotCovered=False
+            elif (not firstMut and
+                  amplBlockStart2<=prevMut<=amplBlockEnd2 and
+                  amplBlockEnd2>=amplBlockStart1+args.maxoverlap):
+                # Calculate weight of this edge - distance between amplicons
                 weight=maxAmplLen-min(50,primers1[0][0]-primers2[1][0]) # if distance is too large (>50), leave it as 50
-            blockGraph.add_edge(primerPairName1,
-                                primerPairName2,
-                                attr_dict={'weight':weight})
+                blockGraph.add_edge(primerPairName1,primerPairName2,attr_dict={'weight':weight})
+                prevMutNotCovered=False
+        if nextMutNotCovered and prevMutNotCovered:
+            print(primerPairName1,primers1)
+            exit(1)
     blocksFinalShortestPaths=[]
     for i,blockGraph in enumerate(blockGraphs):
         if firstNodes[i]==lastNodes[i]:
@@ -2114,7 +2112,7 @@ else:
     p=ThreadPool(args.threads)
     results=[]
     for chrom in sorted(regionsCoords.keys()):
-        results.append(p.apply_async(joinAmpliconsToBlocks,(regionsCoords[chrom],primersInfoByChrom[chrom],args.maxAmplLen,chrom)))
+        results.append(p.apply_async(joinAmpliconsToBlocks,(sorted(regionsCoords[chrom]),primersInfoByChrom[chrom],args.maxAmplLen,chrom)))
     doneWork=0
     wholeWork=len(results)
     showPercWork(doneWork,wholeWork)

@@ -26,11 +26,11 @@ This will give you primers that could be designed with the defined parameters. T
 
 For uploading files to a container, you can use the following commands in another terminal (**open new docker terminal**):
 
-docker ps -a
+`docker ps -a`
 
 to know, what is your container's name. It will be written in the last column.
 
-docker cp <file or directory that you want to copy to the container> <container name>/<folder where you want to put your files>
+`docker cp <file or directory that you want to copy to the container> <container name>:/<folder where you want to put your files>`
 
 And then you can run analysis with command like above.
 
