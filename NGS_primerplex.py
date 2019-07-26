@@ -1314,7 +1314,7 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
         # Get index of the last mutation that is covered by this primers pair
         ## Extract the last position of amplBlock, insert it to list and get index
         if amplBlockEnd1 in blocks[blockNum]:
-            lastMutNum1=sorted(coords).index(amplBlockEnd1)
+            lastMutNum1=sorted(blocks[blockNum]).index(amplBlockEnd1)
         else:
             coords=deepcopy(blocks[blockNum])
             coords.append(amplBlockEnd1)
@@ -1337,6 +1337,11 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
             amplBlockEnd2=primers2[1][0]-primers2[1][1]
             nextMut=blocks[blockNum][min(lastMutNum1+1,len(blocks[blockNum])-1)]
             prevMut=blocks[blockNum][max(firstMutNum1-1,0)]
+##            print(blocks[blockNum])
+##            print(firstMutNum1,lastMutNum1)
+##            print(amplBlockStart1,amplBlockEnd1,nextMut,prevMut)
+##            print(len(blocks[blockNum]))
+##            input()
             if (not lastMut and
                 amplBlockStart2<=nextMut<=amplBlockEnd2 and
                 amplBlockEnd1<amplBlockStart2+args.maxoverlap):
@@ -1346,7 +1351,7 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
                 nextMutNotCovered=False
             elif (not firstMut and
                   amplBlockStart2<=prevMut<=amplBlockEnd2 and
-                  amplBlockEnd2>=amplBlockStart1+args.maxoverlap):
+                  amplBlockEnd2<amplBlockStart1+args.maxoverlap):
                 # Calculate weight of this edge - distance between amplicons
                 weight=maxAmplLen-min(50,primers1[0][0]-primers2[1][0]) # if distance is too large (>50), leave it as 50
                 blockGraph.add_edge(primerPairName1,primerPairName2,attr_dict={'weight':weight})
@@ -1356,7 +1361,6 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
 ##            print(sorted(chromPrimersInfoByChrom.items(),
 ##                         key=lambda item:(item[1][0][0],
 ##                                          item[1][1][0]))[i+1:i+5])
-##    print(len(chromPrimersInfoByChrom.keys()),comparisonNum)
     blocksFinalShortestPaths=[]
     for i,blockGraph in enumerate(blockGraphs):
         if firstNodes[i]==lastNodes[i]:
