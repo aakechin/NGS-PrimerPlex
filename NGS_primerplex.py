@@ -1337,11 +1337,6 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
             amplBlockEnd2=primers2[1][0]-primers2[1][1]
             nextMut=blocks[blockNum][min(lastMutNum1+1,len(blocks[blockNum])-1)]
             prevMut=blocks[blockNum][max(firstMutNum1-1,0)]
-##            print(blocks[blockNum])
-##            print(firstMutNum1,lastMutNum1)
-##            print(amplBlockStart1,amplBlockEnd1,nextMut,prevMut)
-##            print(len(blocks[blockNum]))
-##            input()
             if (not lastMut and
                 amplBlockStart2<=nextMut<=amplBlockEnd2 and
                 amplBlockEnd1<amplBlockStart2+args.maxoverlap):
@@ -1356,11 +1351,6 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
                 weight=maxAmplLen-min(50,primers1[0][0]-primers2[1][0]) # if distance is too large (>50), leave it as 50
                 blockGraph.add_edge(primerPairName1,primerPairName2,attr_dict={'weight':weight})
                 prevMutNotCovered=False
-##        if not lastMut and nextMutNotCovered:
-##            print(primerPairName1,primers1,nextMut)
-##            print(sorted(chromPrimersInfoByChrom.items(),
-##                         key=lambda item:(item[1][0][0],
-##                                          item[1][1][0]))[i+1:i+5])
     blocksFinalShortestPaths=[]
     for i,blockGraph in enumerate(blockGraphs):
         if firstNodes[i]==lastNodes[i]:
@@ -2091,6 +2081,8 @@ else:
         print(' Removing unspecific primer pairs...')
         logger.info(' Removing unspecific primer pairs...')
         primersInfoByChrom,amplNames=removeBadPrimerPairs(primersInfoByChrom,specificPrimers,primersToAmplNames,amplNames)
+        # Write primers that left after filtering by specificity
+        writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_specificity.xls',specificPrimers)
         # If we filtered primers out by specificity, we need to check that all input regions are still covered
         amplNames,allRegions,regionNameToChrom,regionsCoords=checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regionsCoords,'by specificity',args.skipUndesigned)
         # If user wants to automatically sort amplicons by multiplexes
@@ -2101,7 +2093,6 @@ else:
             unspecificPrimers=getPrimerPairsThatFormUnspecificProduct(primersNonSpecRegionsByChrs,args.maxNonSpecLen)
             print('\n # Number of primer pairs that form unspecific product:',len(unspecificPrimers))
             logger.info(' # Number of primer pairs that form unspecific product: '+str(len(unspecificPrimers)))
-        writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_specificity.xls',specificPrimers)
     else:
         unspecificPrimers=None
     # Check primers for covering high-frequent SNPs
@@ -2113,9 +2104,12 @@ else:
             print(" Removing primer pairs covering high-frequent SNPs by 3'-end...")
             logger.info(" Removing primer pairs covering high-frequent SNPs by 3'-end...")
             primersInfoByChrom,amplNames=removeBadPrimerPairs(primersInfoByChrom,primerPairsNonCoveringSNPs,primersToAmplNames,amplNames)
+            # Write primers that left after filtering by covering SNPs
+            writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_SNPs.xls',primerPairsNonCoveringSNPs)
             # If we filtered primers out that cover SNPs, we need to check that all input regions are still covered
             amplNames,allRegions,regionNameToChrom,regionsCoords=checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regionsCoords,'that cover SNPs',args.skipUndesigned)
-        writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_SNPs.xls',primerPairsNonCoveringSNPs)
+        else:
+            writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_SNPs.xls',primerPairsNonCoveringSNPs)
 
     # Now we need to group primers into variants of multiplex PCR
     # multiplexes contains all multiplexes for ditinct joined regions
