@@ -84,14 +84,14 @@ def readInputFile(regionsFile):
                             print('ERROR! Unknown type of primers is necessary to be designed for the following line of input file:')
                             print(string)
                             print('This value can be only "L" (only left primer), "R" (only right primer), "B" (both primers) or nothing (both primers)')
-                            exit(1)
+                            exit(2)
                         regionNameToPrimerType[curRegionName]=cols[5]
                     if len(cols)>6 and cols[6]!='':
                         if cols[6] not in ['W']:
                             print('ERROR! Unknown value for "using whole region" for the following line of input file:')
                             print(string)
                             print('This value can be only "W" (do not split this region onto several amplicons), or nothing (region can be splitted onto several amplicons)')
-                            exit(1)
+                            exit(3)
                         if cols[6]=='W':
                             endShift=regEnd-regStart
                         else:
@@ -118,7 +118,7 @@ def readInputFile(regionsFile):
                       'Use_Whole_Region(optional)')
                 print('But your file have the following format:')
                 print(string)
-                exit(1)
+                exit(4)
     # Sort dict with regions coords
     for chrom in regionsCoords.keys():
         regionsCoords[chrom]=sorted(regionsCoords[chrom])
@@ -141,7 +141,7 @@ def readPrimersFile(primersFile):
             if row[:16]!='#	Left_Primer_Seq	Right_Primer_Seq	Amplicon_Name	Chrom	Amplicon_Start	Amplicon_End	Amplicon_Length	Amplified_Block_Start	Amplified_Block_End	Left_Primer_Tm	Right_Primer_Tm	Left_Primer_Length	Right_Primer_Length	Left_GC	Right_GC'.split('\t'):
                 print('ERROR! Input file with primers has incorrect format. You can use only files with primers that has format of NGS-primerplex')
                 logger.error('Input file with primers has incorrect format. You can use only files with primers that has format of NGS-primerplex')
-                exit(1)
+                exit(5)
             continue
         if row[4] not in amplifiedRegions.keys():
             amplifiedRegions[row[4]]=set(range(int(row[8]),int(row[9])+1))
@@ -217,7 +217,7 @@ def createPrimer3_parameters(pointRegions,args,species='human',
                     print('ERROR! Unknown type of primers is necessary to be designed for the following region:')
                     print(amplName)
                     print('This value can be only "L" (only left primer), "R" (only right primer), "B" (both primers) or nothing (both primers)')
-                    exit(1)
+                    exit(6)
             amplToChrom[amplName]=chrom
             primer3Params[amplName]=[]
             primerTags['PRIMER_PRODUCT_SIZE_RANGE']=[[amplLen+2*args.minPrimerShift,args.maxExtAmplLen]]
@@ -236,7 +236,7 @@ def createPrimer3_parameters(pointRegions,args,species='human',
             if lines[1]=='':
                 print('ERROR! Extracted sequence has no length')
                 print(chromName,start-1-args.maxAmplLen,end+args.maxAmplLen)
-                exit(1)
+                exit(7)
             regionSeq=''.join(lines[1:-1]).upper()
             targetRegion=str(amplBlockStart-args.minPrimerShift-chrTargetSeqStart)+','+str(amplBlockEnd-amplBlockStart+1+2*args.minPrimerShift)
             targetRegionStart=amplBlockStart-args.minPrimerShift-chrTargetSeqStart
@@ -289,7 +289,7 @@ def createPrimer3_parameters(pointRegions,args,species='human',
                         print('ERROR! Unknown type of primers is necessary to be designed for the following region:')
                         print(curRegionName)
                         print('This value can be only "0" (only left primer), "1" (only right primer), "2" (both primers) or nothing (both primers)')
-                        exit(1)
+                        exit(8)
                 # We do not need to split regions onto several blocks
                 ## because previously we splited it onto point positions
                 primer3Params[curRegionName]=[]
@@ -305,7 +305,7 @@ def createPrimer3_parameters(pointRegions,args,species='human',
                 if lines[1]=='':
                     print('ERROR! Extracted sequence has no length')
                     print(chromName,start-1-args.maxAmplLen,end+args.maxAmplLen)
-                    exit(1)
+                    exit(9)
                 regionSeq=''.join(lines[1:-1]).upper()
                 seqTags={}
                 seqTags['SEQUENCE_TEMPLATE']=str(regionSeq)
@@ -391,7 +391,7 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,args,regionsCoords=
             start,end=allRegions[chrom][curRegionName][1:3]
         except KeyError:
             print('ERROR!',allRegions.keys())
-            exit(1)
+            exit(10)
         # Go through each pair of primers and save them and info about them
         for i in range(int(len(primerSeqs)/2)):
             totalPrimersNum+=i+1
@@ -404,7 +404,7 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,args,regionsCoords=
                 primersCoords[2*i][0]=primersCoords[2*i][0]+start-args.maxAmplLen # We do not substract 1, because we want to get real coordinate, not number of symbol in coordinate
             except TypeError:
                 print('ERROR:',primersCoords)
-                exit(1)
+                exit(11)
             # We substract args.maxAmplLen because it is an addiotional part of chromosome that we wrote to primer3 input file as target sequence
             # primersCoords[2*i+1][0] is a right coordinate of primer
             ## If we constructed only left primer
@@ -471,7 +471,7 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,args,regionsCoords=
         if not args.skipUndesigned:
             print(' You should use less stringent parameters')
             logger.info(' You should use less stringent parameters')
-            exit(1)
+            exit(12)
     print(' # Total number of constructed primers:',totalPrimersNum)
     print(' # Total number of different constructed primers:',totalDifPrimersNum)
     logger.info(' # Total number of constructed primers: '+str(totalPrimersNum))
@@ -497,7 +497,7 @@ def runPrimer3(regionName,inputParams,extPrimer,autoAdjust=False):
             print(seqTags,primerTags)
             logger.error('ERROR! '+str(e))
             logger.error(seqTags,primerTags)
-            exit(1)
+            exit(13)
         numReturned=out['PRIMER_PAIR_NUM_RETURNED']
         if (primerTags['PRIMER_PICK_LEFT_PRIMER']==1 and
             primerTags['PRIMER_PICK_RIGHT_PRIMER']==1 and
@@ -987,7 +987,7 @@ def readBwaFile(read,maxPrimerNonspec,refFa,primersInfo=None):
     else:
         print('ERROR! Unknown value of FLAG:',read.flag)
         print(read)
-        exit(1)
+        exit(14)
     if primersInfo:
         primersName=read.qname#[:read.qname.rfind('_')]
         for primerPair in primersInfo.keys():
@@ -996,7 +996,7 @@ def readBwaFile(read,maxPrimerNonspec,refFa,primersInfo=None):
                     targetRegion=['chr'+primersInfo[primerPair][4],int(primersInfo[primerPair][0][primerPair.split('_').index(primersName)][0])]
                 except TypeError:
                     print('ERROR!',primersInfo[primerPair][4],primersInfo[primerPair][0],primerPair.split('_').index(primersName))
-                    exit(1)
+                    exit(15)
                 break
     else:
         targetRegion=[]
@@ -1043,7 +1043,7 @@ def readBwaFile(read,maxPrimerNonspec,refFa,primersInfo=None):
                     logger.error(str(e))
                     print(refFa.filename)
                     logger.error(refFa.filename)
-                    exit(1)
+                    exit(16)
         # Remove 
         # Determine, which sequence we should take: forward or reverse-complement
         ## If primer is on + strand and found region is on opposite
@@ -1115,7 +1115,7 @@ def removeBadPrimerPairs(primersInfoByChrom,goodPrimers,primersToAmplNames,amplN
                     print(chrom,primerPairName)
                     logger.error('Pair of primers is repeated in the primersInfoByChrom!')
                     logger.error(chrom,primerPairName)
-                    exit(1)
+                    exit(17)
             else:
                 amplNamesToDelete=primersToAmplNames[primerPairName]
                 for amplName in amplNamesToDelete:
@@ -1137,7 +1137,7 @@ def checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regio
                     print(curRegionName in regionNameToChrom.keys())
                     print(regionNameToChrom[curRegionName] in allRegions.keys())
                     print(curRegionName in allRegions[regionNameToChrom[curRegionName]].keys())
-                    exit(1)
+                    exit(18)
                 logger.warn('For input region '+curRegionName+' ('+' '.join(list(map(str,allRegions[regionNameToChrom[curRegionName]][curRegionName])))+') no primers left after filtering primers '+filterMessage+'! Try to increase -primernum1 parameter. Or if you have already tried, use less stringent parameters.')
                 regionsCoords[int(regionNameToChrom[curRegionName])].remove(allRegions[regionNameToChrom[curRegionName]][curRegionName][1])
                 if len(regionsCoords[int(regionNameToChrom[curRegionName])])==0:
@@ -1154,7 +1154,7 @@ def checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regio
         else:
             newAmplNames[curRegionName]=ampls
     if someInputRegionUncovered:
-        exit(1)
+        exit(19)
     return(newAmplNames,allRegions,regionNameToChrom,regionsCoords)
 
 def analyzePrimersForCrossingSNP(primersInfo,threads,localGenomeDB={},genomeVersion='hg19'):
@@ -1170,7 +1170,7 @@ def analyzePrimersForCrossingSNP(primersInfo,threads,localGenomeDB={},genomeVers
         except IndexError as e:
             print('ERROR!',e)
             print(info)
-            exit(1)
+            exit(20)
         strand1=1; strand2=-1
         if primer1!='':
             results.append(p.apply_async(checkPrimerForCrossingSNP,(primer1,chrom,start1,end1,strand1,localGenomeDB,args.snpFreq,genomeVersion)))
@@ -1192,8 +1192,8 @@ def analyzePrimersForCrossingSNP(primersInfo,threads,localGenomeDB={},genomeVers
         primer1,primer2=primers.split('_')
         if primer1 not in primersCoveringSNPs and primer2 not in primersCoveringSNPs:
             primerPairsNonCoveringSNPs.append(primers)
-    print("\n # Number of primers that do not overlap with high-frequent SNPs by 3'-end: "+str(len(primerPairsNonCoveringSNPs)))
-    logger.info("\n # Number of primers that do not overlap with high-frequent SNPs by 3'-end: "+str(len(primerPairsNonCoveringSNPs)))
+    print("\n # Number of primers that do not overlap with high-frequent SNPs: "+str(len(primerPairsNonCoveringSNPs)))
+    logger.info("\n # Number of primers that do not overlap with high-frequent SNPs: "+str(len(primerPairsNonCoveringSNPs)))
     return(primerPairsNonCoveringSNPs,primersCoveringSNPs,localGenomeDB)    
 
 # checkPrimerForCrossingSNP checks, if primer crosses some SNPs with high frequence in population
@@ -1219,7 +1219,7 @@ def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,localGenomeDB={},fre
             except:
                 print('ERROR! Could not check primer for crossing SNPs with the following parameters:')
                 print(primer,chrom,start,end,strand)
-                exit(1)
+                exit(21)
             hfSnpFound=False
             for hit in mvRes['hits']:
                 if 'gmaf' not in hit['dbsnp'].keys(): continue
@@ -1229,7 +1229,8 @@ def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,localGenomeDB={},fre
                     try:
                         alFreqs[al['allele']]=al['freq']
                     except KeyError:
-                        print('ERROR!',mvRes); exit(1)
+                        print('ERROR!',mvRes)
+                        exit(22)
                 ref=hit['dbsnp']['ref']
                 alt=hit['dbsnp']['alt']
                 if alt not in alFreqs.keys(): continue
@@ -1239,7 +1240,7 @@ def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,localGenomeDB={},fre
                 except KeyError:
                     print('ERROR of key:',alFreqs)
                     print(mvRes)
-                    exit(1)
+                    exit(23)
             if coordStr not in localGenomeDB.keys():
                 localGenomeDB[coordStr]=hfSnpFound
             else:
@@ -1361,7 +1362,7 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
                 print(blockGraph.edges())
                 print(chromPrimersInfoByChrom)
                 print(chromRegionsCoords)
-                exit(1)
+                exit(24)
             finalShortestPaths=[]
             for path in paths:
                 finalShortestPaths.append(path[1:-1])
@@ -1375,7 +1376,7 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
                 logger.error(str(lastNodes[i])+' is not reachable from '+str(firstNodes[i]))
                 logger.error(str(blockGraph.edges()))
                 logger.error(str(chromPrimersInfoByChrom))
-                exit(1)
+                exit(25)
             g1=blockGraph.subgraph(path)
             shortestPaths={path:g1.size(weight='weight')}
             minPathLen=len(path)
@@ -1406,7 +1407,7 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
         blocksFinalShortestPaths.append(finalShortestPaths)
     return(chrom,blocksFinalShortestPaths)
 
-def makeFinalMultiplexes(initialGraph,multiplexes=[],multNum=2):
+def makeFinalMultiplexes(initialGraph,multiplexes=[],multNum=2,functionFirstCall=False):
     # We try to make cliques from it
     if len(initialGraph)==0:
         return(multiplexes)
@@ -1435,14 +1436,52 @@ def makeFinalMultiplexes(initialGraph,multiplexes=[],multNum=2):
         print("ERROR! Cannot choose multiplex (clique) from designed graph!")
         print('Length of input graph is:',len(initialGraph))
         print(initialGraph.edges())
-        exit(1)
+        exit(26)
     if len(cls[0])>maxNodesNum:
+        # Sort by number of nodes to which this node is linked by edges
         cls[0]=sorted(cls[0],key=graph.degree)
         cls[0]=cls[0][:-(len(cls[0])-maxNodesNum)]
     multiplexes.append(cls[0])
     graph.remove_nodes_from(cls[0])
     if len(graph)>0 and multNum-1>0:
-        multiplexes=makeFinalMultiplexes(graph,multiplexes,multNum-1)
+        multiplexes=makeFinalMultiplexes(graph,multiplexes,multNum-1,False)
+    if functionFirstCall:
+        for multiplex in multiplexes:
+            for multAmplicon in multiplex:
+                if multAmplicon in graph.nodes():
+                    graph.remove_node(multAmplicon)
+    print(len(graph.nodes()),functionFirstCall)
+    # If there are some nodes that were not sorted to any of multiplexes
+    # This is the first call of this function
+    if len(graph.nodes())>0 and functionFirstCall:
+        currentMultNumToAdd=0
+        # Go through all undorted nodes
+        for leftUnsortedNode in graph.nodes():
+            print('Taking '+leftUnsortedNode+" that hasn't been sorted to any multiplex and trying to add it to some multiplex manually...")
+            logger.info('Taking '+leftUnsortedNode+" that hasn't been sorted to any multiplex and trying to add it to some multiplex manually...")
+            multNumsToWhichWeTried=[]
+            neighbours=initialGraph.neighbors(leftUnsortedNode)
+            # Go through all multiplexes and try to add the unsorted node to this multiplex
+            while(len(multNumsToWhichWeTried)<multNum):
+                thisAmpliconFitsThisMultiplex=True
+                # If current unsorted amplicon is linked to all amplicons of current multiplex,
+                # add this amplicons to this multiplex
+                for multAmplicon in multiplexes[currentMultNumToAdd]:
+                    if multAmplicon not in neighbours:
+                        thisAmpliconFitsThisMultiplex=False
+                        break
+                if thisAmpliconFitsThisMultiplex:
+                    multiplexes[currentMultNumToAdd].append(leftUnsortedNode)
+                    print('This amplicon was added to multiplex #'+str(currentMultNumToAdd+1))
+                    logger.info('This amplicon was added to multiplex #'+str(currentMultNumToAdd+1))
+                    break
+                multNumsToWhichWeTried.append(currentMultNumToAdd)
+                currentMultNumToAdd+=1
+                if currentMultNumToAdd>multNum-1:
+                    currentMultNumToAdd=0
+            if not thisAmpliconFitsThisMultiplex:
+                print("This amplicon couldn't be added to any multiplex")
+                logger.info("This amplicon couldn't be added to any multiplex")
     return(multiplexes)
 
 def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,args):
@@ -1455,7 +1494,7 @@ def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,ar
         localMultiplexNums=nx.Graph()
         localMultiplexNums=globalMultiplexNums.subgraph(containerNodes+leftUnsortedAmpls)
         cls=[]
-        cls=makeFinalMultiplexes(localMultiplexNums,[],len(mults))
+        cls=makeFinalMultiplexes(localMultiplexNums,[],len(mults),True)
         multiplexes.extend(cls)
         sumLen=sum([len(x) for x in cls])
         allSortedAmpls=[]
@@ -1494,7 +1533,7 @@ def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,ar
             logger.error('UNKNOWN ERROR! Number of nodes in the final graph is more than in the initial graph!')
             logger.error(str(localMultiplexNums.nodes()))
             logger.error(str(cls))
-            exit(1)
+            exit(27)
     return(multiplexes)
 
 # Function that checks that new primer fits one of the multiplexes
@@ -1562,7 +1601,7 @@ def extractGenomeSeq(refFa,chrom,start,end):
                 logger.error(refFa.filename)
                 print(chrom,start,end)
                 logger.error('chrom:'+str(start)+'-'+str(end))
-                exit(1)
+                exit(28)
     return(seq.upper())
 
 def showPercWork(done,allWork):
@@ -1651,11 +1690,11 @@ try:
 except FileNotFoundError:
     print('ERROR! Input file was not found: '+args.regionsFile)
     logger.error('Input file was not found: '+args.regionsFile)
-    exit(1)
+    exit(29)
 if args.primersFile and args.draftFile:
     print('ERROR! You can use only primers file OR draft primers file. Leave one of this arguments')
     logger.error('ERROR! You can use only primers file OR draft primers file. Leave one of this arguments')
-    exit(1)
+    exit(30)
 inputDir=args.regionsFile[:args.regionsFile.rfind('/')+1]
 wgref=args.wholeGenomeRef
 if not args.maxPrimerHairpinTh:
@@ -1663,15 +1702,15 @@ if not args.maxPrimerHairpinTh:
 if (args.embeddedAmpl or args.primersFile) and args.maxExtAmplLen<=args.maxAmplLen+2*args.minPrimerShift:
     print('ERROR! Maximal length of an extrenal amplicon should be more than maximal length of internal one plus two lengths of mininimal primer shift')
     logger.error('Maximal length of an extrenal amplicon should be more than maximal length of internal one plus two lengths of mininimal primer shift')
-    exit(1)
+    exit(31)
 if not os.path.exists(wgref):
     print('#'*20+'\nERROR! Whole-genome reference file does not exist:',wgref)
     logger.error('Whole-genome reference file does not exist:'+wgref)
-    exit(1)
+    exit(32)
 if args.genomeVersion not in ['hg19','hg38']:
     print('#'*20+'\nERROR! Unaccaptable genome version was chosen:',args.genomeVersion+'. It should be hg19 or hg38')
     logger.error('WUnaccaptable genome version was chosen:'+args.genomeVersion+'. It should be hg19 or hg38')
-    exit(1)
+    exit(33)
 
 # We make primer3 parameters for each input position
 ## Later we will send them into multithreading pool
@@ -1696,7 +1735,7 @@ if args.primersFile:
         for chrom in chromosomesWithUncoveredRegions:
             print(chrom)
             logger.error(chrom)
-        exit(1)
+        exit(34)
     # If user wants to automatically sort primers pairs by multiplexes
     ## We create file for storing all problematic pairs of primers pairs
     if len(regionNameToMultiplex)>0:
@@ -1760,7 +1799,7 @@ if args.primersFile:
                     except KeyError:
                         print('ERROR:',outputInternalPrimers.keys())
                         print(globalMultiplexNums.nodes())
-                        exit(1)
+                        exit(35)
                     if not fit:
                         mpws.write_row(mpwsRowNum,0,[','.join(internalPrimers[0:2]),','.join(outputInternalPrimers[node][0:2]),problem])
                         mpwsRowNum+=1
@@ -1814,7 +1853,7 @@ if args.primersFile:
             except:
                 print('ERROR!',amplToChrom)
                 print(curRegionName)
-                exit(1)
+                exit(36)
             start=amplToStartCoord[curRegionName]+primersCoords[2*k+0][0]+1
             end=amplToStartCoord[curRegionName]+primersCoords[2*k+1][0]+1
             leftGC=round(100*(primerSeqs[2*k+0].count('G')+primerSeqs[2*k+0].count('C'))/len(primerSeqs[2*k+0]),2)
@@ -1827,7 +1866,7 @@ if args.primersFile:
             if lines[1]=='':
                 print('ERROR! Extracted sequence has no length')
                 print(chromName,start-1-100,end+100)
-                exit(1)
+                exit(37)
             extendedAmplSeq=''.join(lines[1:-1]).upper()
             if curRegionName not in outputExternalPrimers.keys():
                 outputExternalPrimers[curRegionName]=[[primerSeqs[2*k+0],primerSeqs[2*k+1],curRegionName+'_ext',chrom,start,end,
@@ -1890,8 +1929,8 @@ if args.primersFile:
                 primersCoveringSNPs.append(primer)
             done+=1
             showPercWork(done,wholeWork)
-        print("\n # Number of primers covering high-frequent SNPs by 3'-end: "+str(len(primersCoveringSNPs))+'. They will be removed.')
-        logger.info(" # Number of primers covering high-frequent SNPs by 3'-end: "+str(len(primersCoveringSNPs))+'. They will be removed.')
+        print("\n # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
+        logger.info(" # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
     # Now we need to remove unspecific primer pairs
     unspecificExternalPairs=0
     for curRegionName,primers in outputExternalPrimers.items():
@@ -1978,7 +2017,8 @@ if args.primersFile:
                         else:
                             wsw2.write(amplNameToRowNum[regionName],19,'FAIL')
                 except:
-                    print('ERROR!',amplNameToRowNum[regionName],primer[:-1]); exit(1)
+                    print('ERROR!',amplNameToRowNum[regionName],primer[:-1])
+                    exit(38)
     if len(regionNameToMultiplex)>0:
         multiplexes=[]
         leftUnsortedAmpls=[]
@@ -1989,7 +2029,7 @@ if args.primersFile:
             localMultiplexNums=nx.Graph()
             localMultiplexNums=globalMultiplexNums.subgraph(containerNodes+leftUnsortedAmpls)
             cls=[]
-            cls=makeFinalMultiplexes(localMultiplexNums,[],len(mults))
+            cls=makeFinalMultiplexes(localMultiplexNums,[],len(mults),True)
             multiplexes.extend(cls)
             sumLen=sum([len(x) for x in cls])
             allSortedAmpls=[]
@@ -2028,7 +2068,7 @@ if args.primersFile:
                 logger.error('UNKNOWN ERROR! Number of nodes in the final graph is more than in the initial graph!')
                 logger.error(str(localMultiplexNums.nodes()))
                 logger.error(str(cls))
-                exit(1)
+                exit(39)
         for k,multiplex in enumerate(multiplexes):
             for ampl in multiplex:
                 wsw2.write(amplNameToRowNum[ampl],18,k+1)
@@ -2042,6 +2082,8 @@ else:
         logger.info('Reading file with draft primers...')
         # Read file with draft primers
         primersInfo,primersInfoByChrom=readDraftPrimers(args.draftFile)
+        print('Number of primer pairs from draft file: '+str(len(primersInfo)))
+        logger.info('Number of primer pairs from draft file: '+str(len(primersInfo)))
         # Get regions that uncovered by already designed primers
         print('Getting positions that uncovered by draft primers...')
         logger.info('Getting positions that uncovered by draft primers...')
@@ -2057,6 +2099,8 @@ else:
             # primer3Params,regionNameToChrom,args,regionsCoords=None,allRegions=None,primersInfo=None,primersInfoByChrom=None,amplNames=None,primersToAmplNames=None
             primersInfo,primersInfoByChrom,amplNames,primersToAmplNames,regionsCoords,regionNameToChrom,uncoveredRegions=constructInternalPrimers(primer3Params,regionNameToChrom,args,regionsCoords,allRegions,
                                                                                                                                                   primersInfo,primersInfoByChrom,amplNames,primersToAmplNames)
+            print('Total number of primer pairs: '+str(len(primersInfo)))
+            logger.info('Total number of primer pairs: '+str(len(primersInfo)))
     else:                            
         # Go through all regions sorted by chromosome and coordinate of start
         print('Creating input parameters for primer3...')
@@ -2101,8 +2145,8 @@ else:
         logger.info('Analyzing primers for covering high-frequent SNPs...')
         primerPairsNonCoveringSNPs,primersCoveringSNPs,localGenomeDB=analyzePrimersForCrossingSNP(primersInfo,args.threads,{},args.genomeVersion)
         if len(primersCoveringSNPs)>0:
-            print(" Removing primer pairs covering high-frequent SNPs by 3'-end...")
-            logger.info(" Removing primer pairs covering high-frequent SNPs by 3'-end...")
+            print(" Removing primer pairs covering high-frequent SNPs...")
+            logger.info(" Removing primer pairs covering high-frequent SNPs...")
             primersInfoByChrom,amplNames=removeBadPrimerPairs(primersInfoByChrom,primerPairsNonCoveringSNPs,primersToAmplNames,amplNames)
             # Write primers that left after filtering by covering SNPs
             writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_SNPs.xls',primerPairsNonCoveringSNPs)
@@ -2256,7 +2300,7 @@ else:
                 if lines[1]=='':
                     print('ERROR! Extracted sequence has no length')
                     print(chromName,amplStart-1-100,amplEnd+100)
-                    exit(1)
+                    exit(40)
                 extendedAmplSeq=''.join(lines[1:-1]).upper()
                 rInternalFile.write('\n'.join(['>'+primersToAmplNames['_'.join(c)][0],extendedAmplSeq])+'\n')
                 amplName=primersToAmplNames['_'.join(c)][0]
@@ -2290,7 +2334,7 @@ else:
                             except KeyError:
                                 print('ERROR:',outputInternalPrimers.keys())
                                 print(globalMultiplexNums.nodes())
-                                exit(1)
+                                exit(41)
                             if not fit:
                                 mpws.write_row(mpwsRowNum,0,[','.join(c),','.join(outputInternalPrimers[node][0:2]),problem])
                                 mpwsRowNum+=1
@@ -2325,6 +2369,8 @@ else:
                 logger.info('Reading file with draft primers...')
                 # Read file with draft primers
                 extPrimersInfo,extPrimersInfoByChrom=readDraftPrimers(args.draftFile,external=True)
+                print('Number of external primer pairs from draft file: '+str(len(extPrimersInfo)))
+                logger.info('Number of external primer pairs from draft file: '+str(len(extPrimersInfo)))
                 # Get regions that uncovered by already designed primers
                 print('Getting positions that uncovered by draft external primers...')
                 logger.info('Getting positions that uncovered by draft external primers...')
@@ -2400,7 +2446,7 @@ else:
                     except:
                         print('ERROR!',amplToChrom)
                         print(curRegionName)
-                        exit(1)
+                        exit(42)
                     if primerSeqs[2*k+0]!='':
                         leftGC=round(100*(primerSeqs[2*k+0].count('G')+primerSeqs[2*k+0].count('C'))/len(primerSeqs[2*k+0]),2)
                         start=amplToStartCoord[curRegionName]+primersCoords[2*k+0][0]
@@ -2421,7 +2467,7 @@ else:
                     if lines[1]=='':
                         print('ERROR! Extracted sequence has no length')
                         print(chromName,start-1-100,end+100)
-                        exit(1)
+                        exit(43)
                     extendedAmplSeq=''.join(lines[1:-1]).upper()
                     if curRegionName not in outputExternalPrimers.keys():
                         outputExternalPrimers[curRegionName]=[[primerSeqs[2*k+0],primerSeqs[2*k+1],curRegionName+'_ext',chrom,start,end,
@@ -2469,8 +2515,8 @@ else:
                 print('Analyzing external primers for covering high-frequent SNPs...')
                 logger.info('Analyzing external primers for covering high-frequent SNPs...')
                 primerPairsNonCoveringSNPs,primersCoveringSNPs,localGenomeDB=analyzePrimersForCrossingSNP(extPrimersInfo,args.threads,localGenomeDB,args.genomeVersion)
-                print("\n # Number of primers covering high-frequent SNPs by 3'-end: "+str(len(primersCoveringSNPs))+'. They will be removed.')
-                logger.info(" # Number of primers covering high-frequent SNPs by 3'-end: "+str(len(primersCoveringSNPs))+'. They will be removed.')
+                print("\n # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
+                logger.info(" # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
             # Now we need to remove unspecific primer pairs
             unspecificExternalPairs=0
             for curRegionName,primers in outputExternalPrimers.items():
@@ -2564,30 +2610,39 @@ else:
                             print('ERROR! Region name "'+regionName+'" was not found in the dictionary:')
                             print(amplNameToRowNum)
                             print(primer[:-1])
-                            exit(1)
+                            exit(44)
             rExternalFile.close()
             if len(regionNameToMultiplex)>0:
+                # Contains amplicons for each of multiplex
                 multiplexes=[]
+                # Contains amplicons that were not sorted to any multiplex
                 leftUnsortedAmpls=[]
+                # globalMultiplexesContainer different groups of multiplex numbers
+                # e.g. it can be 1_2_3 for some genes and 4_5_6 for other genes
                 for k,(key,containerNodes) in enumerate(sorted(globalMultiplexesContainer.items())):
                     print('Sorting amplicons to multiplexes '+str(key)+' (contain '+str(len(containerNodes+leftUnsortedAmpls))+' amplicons)...')
                     logger.info('Sorting amplicons to multiplexes '+str(key)+' (contain '+str(len(containerNodes+leftUnsortedAmpls))+' amplicons)...')
                     mults=key.split('_')
+                    # Create graph with all left unsorted amplicons
                     localMultiplexNums=nx.Graph()
                     localMultiplexNums=globalMultiplexNums.subgraph(containerNodes+leftUnsortedAmpls)
+                    # Contains amplicons that were sorted to current multiplex
                     cls=[]
-                    cls=makeFinalMultiplexes(localMultiplexNums,[],len(mults))
+                    cls=makeFinalMultiplexes(localMultiplexNums,[],len(mults),True)
                     multiplexes.extend(cls)
+                    # Calculate how many amplicons were sorted to current multiplex
                     sumLen=sum([len(x) for x in cls])
                     allSortedAmpls=[]
                     for x in cls:
                         allSortedAmpls.extend(x)
+                    # If all amplicons were sorted to multiplexes
                     if sumLen==len(localMultiplexNums):
                         print(' # Number of multiplexes:',len(cls))
                         logger.info(' # Number of multiplexes: '+str(len(cls)))
                         for z,cl in enumerate(cls):
                             print('  # Number of amplicons in multiplex',mults[z],len(cl))
                             logger.info('  # Number of amplicons in multiplex '+mults[z]+': '+str(len(cl)))
+                    # If not all amplicons were sorted to multiplexes
                     elif sum([len(x) for x in cls])<len(localMultiplexNums):
                         print('Number of designed multiplexes:',len(cls))
                         logger.warn(' # Number of designed multiplexes: '+str(len(cls)))
@@ -2615,7 +2670,7 @@ else:
                         logger.error('UNKNOWN ERROR! Number of nodes in the final graph is more than in the initial graph!')
                         logger.error(str(localMultiplexNums.nodes()))
                         logger.error(str(cls))
-                        exit(1)
+                        exit(45)
                 for k,multiplex in enumerate(multiplexes):
                     for ampl in multiplex:
                         wsw2.write(amplNameToRowNum[ampl],18,k+1)
