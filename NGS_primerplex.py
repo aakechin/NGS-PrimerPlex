@@ -1457,8 +1457,8 @@ def makeFinalMultiplexes(initialGraph,multiplexes=[],multNum=2,functionFirstCall
         currentMultNumToAdd=0
         # Go through all undorted nodes
         for leftUnsortedNode in graph.nodes():
-            print('Taking '+leftUnsortedNode+" that hasn't been sorted to any multiplex and trying to add it to some multiplex manually...")
-            logger.info('Taking '+leftUnsortedNode+" that hasn't been sorted to any multiplex and trying to add it to some multiplex manually...")
+##            print('Taking '+leftUnsortedNode+" that hasn't been sorted to any multiplex and trying to add it to some multiplex manually...")
+##            logger.info('Taking '+leftUnsortedNode+" that hasn't been sorted to any multiplex and trying to add it to some multiplex manually...")
             multNumsToWhichWeTried=[]
             neighbours=initialGraph.neighbors(leftUnsortedNode)
             # Go through all multiplexes and try to add the unsorted node to this multiplex
@@ -1472,16 +1472,16 @@ def makeFinalMultiplexes(initialGraph,multiplexes=[],multNum=2,functionFirstCall
                         break
                 if thisAmpliconFitsThisMultiplex:
                     multiplexes[currentMultNumToAdd].append(leftUnsortedNode)
-                    print('This amplicon was added to multiplex #'+str(currentMultNumToAdd+1))
-                    logger.info('This amplicon was added to multiplex #'+str(currentMultNumToAdd+1))
+##                    print('This amplicon was added to multiplex #'+str(currentMultNumToAdd+1))
+##                    logger.info('This amplicon was added to multiplex #'+str(currentMultNumToAdd+1))
                     break
                 multNumsToWhichWeTried.append(currentMultNumToAdd)
                 currentMultNumToAdd+=1
                 if currentMultNumToAdd>multNum-1:
                     currentMultNumToAdd=0
-            if not thisAmpliconFitsThisMultiplex:
-                print("This amplicon couldn't be added to any multiplex")
-                logger.info("This amplicon couldn't be added to any multiplex")
+##            if not thisAmpliconFitsThisMultiplex:
+##                print("This amplicon couldn't be added to any multiplex")
+##                logger.info("This amplicon couldn't be added to any multiplex")
     return(multiplexes)
 
 def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,args):
