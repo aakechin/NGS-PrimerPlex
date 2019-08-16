@@ -1450,15 +1450,12 @@ def makeFinalMultiplexes(initialGraph,multiplexes=[],multNum=2,functionFirstCall
             for multAmplicon in multiplex:
                 if multAmplicon in graph.nodes():
                     graph.remove_node(multAmplicon)
-    print(len(graph.nodes()),functionFirstCall)
     # If there are some nodes that were not sorted to any of multiplexes
     # This is the first call of this function
     if len(graph.nodes())>0 and functionFirstCall:
         currentMultNumToAdd=0
         # Go through all undorted nodes
         for leftUnsortedNode in graph.nodes():
-##            print('Taking '+leftUnsortedNode+" that hasn't been sorted to any multiplex and trying to add it to some multiplex manually...")
-##            logger.info('Taking '+leftUnsortedNode+" that hasn't been sorted to any multiplex and trying to add it to some multiplex manually...")
             multNumsToWhichWeTried=[]
             neighbours=initialGraph.neighbors(leftUnsortedNode)
             # Go through all multiplexes and try to add the unsorted node to this multiplex
@@ -1472,16 +1469,11 @@ def makeFinalMultiplexes(initialGraph,multiplexes=[],multNum=2,functionFirstCall
                         break
                 if thisAmpliconFitsThisMultiplex:
                     multiplexes[currentMultNumToAdd].append(leftUnsortedNode)
-##                    print('This amplicon was added to multiplex #'+str(currentMultNumToAdd+1))
-##                    logger.info('This amplicon was added to multiplex #'+str(currentMultNumToAdd+1))
                     break
                 multNumsToWhichWeTried.append(currentMultNumToAdd)
                 currentMultNumToAdd+=1
                 if currentMultNumToAdd>multNum-1:
                     currentMultNumToAdd=0
-##            if not thisAmpliconFitsThisMultiplex:
-##                print("This amplicon couldn't be added to any multiplex")
-##                logger.info("This amplicon couldn't be added to any multiplex")
     return(multiplexes)
 
 def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,args):
