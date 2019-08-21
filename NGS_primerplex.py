@@ -690,7 +690,12 @@ def writeDraftPrimers(primersInfo,rFile,goodPrimers=None,external=False):
     wbw.close()
 
 def readDraftPrimers(draftFile,external=False):
-    wb=xlrd.open_workbook(draftFile)
+    try:
+        wb=xlrd.open_workbook(draftFile)
+    except FileNotFoundError:
+        print('ERROR (46)! The defined file with draft primers was not found')
+        print(draftFile)
+        exit(46)
     if external:
         ws=wb.sheet_by_index(1)
     else:
@@ -1216,9 +1221,10 @@ def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,localGenomeDB={},fre
                 else:
                     mvRes=mv.query('dbsnp.chrom:'+str(chrom)+' && dbsnp.'+genomeVersion+'.start:'+str(coord),fields='dbsnp')
                     coord=start
-            except:
+            except Exception as e:
                 print('ERROR! Could not check primer for crossing SNPs with the following parameters:')
                 print(primer,chrom,start,end,strand)
+                print(e)
                 exit(21)
             hfSnpFound=False
             for hit in mvRes['hits']:
