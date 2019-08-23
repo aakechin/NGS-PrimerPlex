@@ -725,7 +725,7 @@ def getChrNum(chrom):
     elif chrom=='Y' or chrom=='y':
         chrom=24
     else:
-        chrom=int(chrom)
+        chrom=int(float(chrom))
     return(chrom)
 
 def getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom):
