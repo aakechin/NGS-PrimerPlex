@@ -708,13 +708,14 @@ def readDraftPrimers(draftFile,external=False):
             continue
         row=ws.row_values(i)
         ##    [primersCoords[2*i:2*i+2],primerTms[2*i:2*i+2],amplLens[i],amplScores[i],chrom]
+        chrom=getChrNum(row[9])
         primersInfo[row[0]]=[[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]],
                              [int(row[5]),int(row[6])],
-                             int(row[7]),int(row[8]),str(row[9])]
-        if getChrNum(row[9]) not in primersInfoByChrom.keys():
-            primersInfoByChrom[getChrNum(row[9])]={row[0]:[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]}
-        elif row[0] not in primersInfoByChrom[getChrNum(row[9])].keys():
-            primersInfoByChrom[getChrNum(row[9])][row[0]]=[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]
+                             int(row[7]),int(row[8]),str(chrom)]
+        if chrom not in primersInfoByChrom.keys():
+            primersInfoByChrom[chrom]={row[0]:[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]}
+        elif row[0] not in primersInfoByChrom[chrom].keys():
+            primersInfoByChrom[chrom][row[0]]=[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]
     return(primersInfo,primersInfoByChrom)
 
 def getChrNum(chrom):
@@ -725,7 +726,7 @@ def getChrNum(chrom):
     elif chrom=='Y' or chrom=='y':
         chrom=24
     else:
-        chrom=int(float(chrom))
+        chrom=int(round(float(chrom),0))
     return(chrom)
 
 def getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom):
@@ -1217,36 +1218,44 @@ def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,localGenomeDB={},fre
             try:
                 if strand>0:
                     mvRes=mv.query('dbsnp.chrom:'+str(chrom)+' && dbsnp.'+genomeVersion+'.start:'+str(coord),fields='dbsnp')
-                    coord=end
                 else:
                     mvRes=mv.query('dbsnp.chrom:'+str(chrom)+' && dbsnp.'+genomeVersion+'.start:'+str(coord),fields='dbsnp')
-                    coord=start
             except Exception as e:
                 print('ERROR! Could not check primer for crossing SNPs with the following parameters:')
                 print(primer,chrom,start,end,strand)
                 print(e)
                 exit(21)
             hfSnpFound=False
+            alFreqs={}
             for hit in mvRes['hits']:
-                if 'gmaf' not in hit['dbsnp'].keys(): continue
-                alFreqs={}
+##                if 'gmaf' not in hit['dbsnp'].keys(): continue
+                if 'alleles' not in hit['dbsnp'].keys():
+                    continue
                 for al in hit['dbsnp']['alleles']:
-                    if 'freq' not in al.keys(): continue
+                    if ('freq' not in al.keys() or '1000g' not in al['freq'].keys()):
+                        continue
                     try:
-                        alFreqs[al['allele']]=al['freq']
+                        if al['allele'] in alFreqs.keys():
+                            if alFreqs[al['allele']]==al['freq']['1000g']:
+                                continue
+                            else:
+                                print('ERROR! Different frequencies for the same allele:')
+                                print(alFreqs[al['allele']],al['freq']['1000g'])
+                                print(al['allele'])
+                                exit(47)
+                        else:
+                            alFreqs[al['allele']]=al['freq']['1000g']
                     except KeyError:
                         print('ERROR!',mvRes)
-                        exit(22)
+                        print(al['freq'])
+                        print(al['allele'])
+                        exit(11)
                 ref=hit['dbsnp']['ref']
-                alt=hit['dbsnp']['alt']
-                if alt not in alFreqs.keys(): continue
-                try:
-                    if alFreqs[alt]>=freq:
-                        hfSnpFound=True
-                except KeyError:
-                    print('ERROR of key:',alFreqs)
-                    print(mvRes)
-                    exit(23)
+                if ref in alFreqs.keys():
+                    alFreqs.pop(ref)
+            for al,alFreq in alFreqs.items():
+                if alFreq>=freq:
+                    hfSnpFound=True
             if coordStr not in localGenomeDB.keys():
                 localGenomeDB[coordStr]=hfSnpFound
             else:
