@@ -1560,16 +1560,20 @@ def checkPrimersFit(primers,primersToCompare,minmultdimerdg=-6,unspecificPrimers
     dG2=primer3.calcHeterodimer(primers[0],rightPrimer).dg/1000
     dG3=primer3.calcHeterodimer(primers[1],leftPrimer).dg/1000
     dG4=primer3.calcHeterodimer(primers[1],rightPrimer).dg/1000
-    if ((dG1<maxdG and (revCompl(primers[0][-5:]) in leftPrimer[1:] or revCompl(leftPrimer[-5:]) in primers[0][1:]))
+    if (calcThreeStrikeEndDimer(primers[0],leftPrimer)<maxdG
+##        (dG1<maxdG and (revCompl(primers[0][-5:]) in leftPrimer[1:] or revCompl(leftPrimer[-5:]) in primers[0][1:]))
         or dG1<maxdG2):
         return(False,'Heterodimer of F-primer with F-primer')
-    if ((dG2<maxdG and (revCompl(primers[0][-5:]) in rightPrimer[1:] or revCompl(rightPrimer[-5:]) in primers[0][1:]))
+    if (calcThreeStrikeEndDimer(primers[0],rightPrimer)<maxdG
+##        (dG2<maxdG and (revCompl(primers[0][-5:]) in rightPrimer[1:] or revCompl(rightPrimer[-5:]) in primers[0][1:]))
         or dG2<maxdG2):
         return(False,'Heterodimer of F-primer with R-primer')
-    if ((dG3<maxdG and (revCompl(primers[1][-5:]) in leftPrimer[1:] or revCompl(leftPrimer[-5:]) in primers[1][1:]))
+    if (calcThreeStrikeEndDimer(primers[1],leftPrimer)<maxdG
+##        (dG3<maxdG and (revCompl(primers[1][-5:]) in leftPrimer[1:] or revCompl(leftPrimer[-5:]) in primers[1][1:]))
         or dG3<maxdG2):
         return(False,'Heterodimer of R-primer with F-primer')
-    if ((dG4<maxdG and (revCompl(primers[1][-5:]) in rightPrimer[1:] or revCompl(rightPrimer[-5:]) in primers[1][1:]))
+    if (calcThreeStrikeEndDimer(primers[1],rightPrimer)<maxdG
+##        (dG4<maxdG and (revCompl(primers[1][-5:]) in rightPrimer[1:] or revCompl(rightPrimer[-5:]) in primers[1][1:]))
         or dG4<maxdG2):
         return(False,'Heterodimer of R-primer with R-primer')
     # Unspecific products
@@ -1580,6 +1584,43 @@ def checkPrimersFit(primers,primersToCompare,minmultdimerdg=-6,unspecificPrimers
             or '_'.join([primers[1],rightPrimer]) in unspecificPrimers):
             return(False,'Unspecific product')
     return(True,None)
+
+# Function that checks if two primers can hybridize with hybridized 3'-end
+# Start from 4 nucleotides
+def calcThreeStrikeEndDimer(primer1,primer2,startEndLen=4):
+    # Get the longest region of primer1 3'-end that can hybridize to primer2
+    endLen=startEndLen
+    if revCompl(primer1[-endLen:]) in primer2:
+        while(endLen<len(primer1)):
+            endLen+=1
+            if revCompl(primer1[-endLen:]) not in primer2:
+                endLen-=1
+                break
+        # Get dG for the longest region found
+        # We take -1 and +1 nucleotides from the hybridized region
+        thermoStart1=min(len(primer1),endLen+1)
+        thermoStart2=max(0,primer2.index(revCompl(primer1[-endLen:]))-1)
+        thermoEnd2=min(len(primer2),primer2.index(revCompl(primer1[-endLen:]))+endLen+1)
+        dG1=primer3.calcHeterodimer(primer1[-thermoStart1:],primer2[thermoStart2:thermoEnd2]).dg/1000
+    else:
+        dG1=0
+    # Get the longest region of primer2 3'-end that can hybridize to primer1
+    endLen=startEndLen
+    if revCompl(primer2[-endLen:]) in primer1:
+        while(endLen<len(primer2)):
+            endLen+=1
+            if revCompl(primer2[-endLen:]) not in primer1:
+                endLen-=1
+                break
+        # Get dG for the longest region found
+        # We take -1 and +1 nucleotides from the hybridized region
+        thermoStart1=min(len(primer2),endLen+1)
+        thermoStart2=max(0,primer1.index(revCompl(primer2[-endLen:]))-1)
+        thermoEnd2=min(len(primer1),primer1.index(revCompl(primer2[-endLen:]))+endLen+1)
+        dG2=primer3.calcHeterodimer(primer2[-thermoStart1:],primer1[thermoStart2:thermoEnd2]).dg/1000
+    else:
+        dG2=0
+    return(min(dG1,dG2))
 
 def extractGenomeSeq(refFa,chrom,start,end):
     attempts=0
