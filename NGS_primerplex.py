@@ -1013,9 +1013,8 @@ def readBwaFile(read,maxPrimerNonspec,refFa,primersInfo=None):
         nonSpecRegions=[]
     if read.has_tag('XA'):
         nonSpecRegions.extend(read.get_tag('XA').split(';')[:-1])
-    qname='_'.join(read.qname.split('_')[:2]+read.qname.split('_')[-1:])
-    if len(nonSpecRegions)>maxPrimerNonspec*2:
-        return(qname,nonSpecRegions)
+    if len(nonSpecRegions)>maxPrimerNonspec:
+        return(read.qname,nonSpecRegions)
     primerNonSpecRegions=[]
     for region in nonSpecRegions: # read XA tag ends with ; so the last element is empty
         # We go through all these regions and check that 3'-nucleotide matches primer's 3'-end
@@ -1041,7 +1040,7 @@ def readBwaFile(read,maxPrimerNonspec,refFa,primersInfo=None):
         while(seq is None):
             try:
                 seq=refFa.fetch(region=chrom+':'+str(abs(int(pos)))+'-'+str(abs(int(pos))+regionLen-1))
-            except:
+            except Exception as e:
                 seq=None
                 attempts+=1
                 if attempts>=10:                    
@@ -1123,10 +1122,14 @@ def removeBadPrimerPairs(primersInfoByChrom,goodPrimers,primersToAmplNames,amplN
                     logger.error(chrom,primerPairName)
                     exit(17)
             else:
-                amplNamesToDelete=primersToAmplNames[primerPairName]
-                for amplName in amplNamesToDelete:
-                    curRegionName=amplName[:amplName.rfind('_')]
-                    amplNames[curRegionName].remove(amplName)
+                # If draft file contained some primer pairs
+                # that do not overlap any target region,
+                # we can simply skip them
+                if primerPairName in primersToAmplNames.keys():
+                    amplNamesToDelete=primersToAmplNames[primerPairName]
+                    for amplName in amplNamesToDelete:
+                        curRegionName=amplName[:amplName.rfind('_')]
+                        amplNames[curRegionName].remove(amplName)
     primersInfoByChrom=deepcopy(newPrimersInfoByChrom)
     return(primersInfoByChrom,amplNames)
 
@@ -1163,7 +1166,9 @@ def checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regio
         exit(19)
     return(newAmplNames,allRegions,regionNameToChrom,regionsCoords)
 
-def analyzePrimersForCrossingSNP(primersInfo,threads,localGenomeDB={},genomeVersion='hg19'):
+def analyzePrimersForCrossingSNP(primersInfo,threads,
+                                 localGenomeDB={},genomeVersion='hg19',
+                                 end3Len=None):
     p=ThreadPool(threads)
     results=[]
     for primers,info in sorted(primersInfo.items(),
@@ -1179,9 +1184,13 @@ def analyzePrimersForCrossingSNP(primersInfo,threads,localGenomeDB={},genomeVers
             exit(20)
         strand1=1; strand2=-1
         if primer1!='':
-            results.append(p.apply_async(checkPrimerForCrossingSNP,(primer1,chrom,start1,end1,strand1,localGenomeDB,args.snpFreq,genomeVersion)))
+            results.append(p.apply_async(checkPrimerForCrossingSNP,(primer1,chrom,start1,end1,strand1,
+                                                                    localGenomeDB,args.snpFreq,
+                                                                    genomeVersion,end3Len)))
         if primer2!='':
-            results.append(p.apply_async(checkPrimerForCrossingSNP,(primer2,chrom,start2,end2,strand2,localGenomeDB,args.snpFreq,genomeVersion)))
+            results.append(p.apply_async(checkPrimerForCrossingSNP,(primer2,chrom,start2,end2,strand2,
+                                                                    localGenomeDB,args.snpFreq,
+                                                                    genomeVersion,end3Len)))
     primersCoveringSNPs=[]
     wholeWork=len(results)
     done=0
@@ -1203,36 +1212,52 @@ def analyzePrimersForCrossingSNP(primersInfo,threads,localGenomeDB={},genomeVers
     return(primerPairsNonCoveringSNPs,primersCoveringSNPs,localGenomeDB)    
 
 # checkPrimerForCrossingSNP checks, if primer crosses some SNPs with high frequence in population
-def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,localGenomeDB={},freq=0.1,genomeVersion='hg19'):
+def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,
+                              localGenomeDB={},freq=0.1,
+                              genomeVersion='hg19',end3Len=None):
     mv=myvariant.MyVariantInfo()
+    # end3Len sets number of nucleotides from the 3'-end that we will check
+    if end3Len!=None:
+        if strand>0:
+            start=max(start,end-end3Len+1)
+        else:
+            end=min(end,start+end3Len-1)
     # Previously, we only filtered out primers that crossed SNP by 3'-end
     # Now, we filter primers that cross SNP by any of its sequence
+    hfSnpFound=False
     for i,coord in enumerate(range(start,end+1)):
         if strand>0:
             nuc=primer[i]
-##            coordStr='_'.join([str(chrom),str(coord)])
         else:
             nuc=primer[-(i+1)]
         coordStr='_'.join([str(chrom),str(coord)])
         if coordStr not in localGenomeDB.keys():
-            try:
-                if strand>0:
-                    mvRes=mv.query('dbsnp.chrom:'+str(chrom)+' && dbsnp.'+genomeVersion+'.start:'+str(coord),fields='dbsnp')
-                else:
-                    mvRes=mv.query('dbsnp.chrom:'+str(chrom)+' && dbsnp.'+genomeVersion+'.start:'+str(coord),fields='dbsnp')
-            except Exception as e:
-                print('ERROR! Could not check primer for crossing SNPs with the following parameters:')
-                print(primer,chrom,start,end,strand)
-                print(e)
-                exit(21)
-            hfSnpFound=False
+            tryNum=1
+            while(True):
+                try:
+                    if strand>0:
+                        mvRes=mv.query('dbsnp.chrom:'+str(chrom)+' && dbsnp.'+genomeVersion+'.start:'+str(coord),fields='dbsnp')
+                    else:
+                        mvRes=mv.query('dbsnp.chrom:'+str(chrom)+' && dbsnp.'+genomeVersion+'.start:'+str(coord),fields='dbsnp')
+                except Exception as e:
+                    tryNum+=1
+                    if tryNum==10:
+                        print('ERROR! Could not check primer for crossing SNPs with the following parameters:')
+                        logger.error('ERROR! Could not check primer for crossing SNPs with the following parameters:')
+                        print(primer,chrom,start,end,strand)
+                        logger.error(', '.join([primer,str(chrom),str(start),str(end),str(strand)]))
+                        print(e)
+                        logger.error(e)
+                        exit(21)
+                    continue
+                break
             alFreqs={}
             for hit in mvRes['hits']:
-##                if 'gmaf' not in hit['dbsnp'].keys(): continue
                 if 'alleles' not in hit['dbsnp'].keys():
                     continue
                 for al in hit['dbsnp']['alleles']:
-                    if ('freq' not in al.keys() or '1000g' not in al['freq'].keys()):
+                    if ('freq' not in al.keys() or
+                        '1000g' not in al['freq'].keys()):
                         continue
                     try:
                         if al['allele'] in alFreqs.keys():
@@ -1262,7 +1287,7 @@ def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,localGenomeDB={},fre
                 localGenomeDB[coordStr]=hfSnpFound
             if hfSnpFound:
                 return(primer,hfSnpFound,localGenomeDB)
-        else:
+        elif localGenomeDB[coordStr]==True:
             return(primer,localGenomeDB[coordStr],localGenomeDB)
     return(primer,hfSnpFound,localGenomeDB)
 
@@ -1702,8 +1727,9 @@ par.add_argument('--do-blast','-blast',dest='doBlast',action='store_true',help='
 par.add_argument('--substititutions-num','-subst',dest='substNum',type=int,help='accepted number of substitutions for searching primers in genome. Default: 2',required=False,default=2)
 par.add_argument('--max-nonspecific-amplicon-length','-maxnonspeclen',dest='maxNonSpecLen',type=int,help='maximal length of nonspecific amplicons that the program should consider. For example, if you design primers for DNA from serum, you can set it as 150. Default: 200',required=False,default=200)
 par.add_argument('--snps','-snps',dest='snps',action='store_true',help="use this parameter if you want to check that 3'-ends of your primers do not cover any SNPs with high frequency")
-par.add_argument('--min-multiplex-dimer-dg','-minmultdimerdg',dest='minMultDimerdG',type=int,help="minimal value of free energy of primer dimer formation in one multiplex in kcal/mol. Default: -6",required=False,default=-6)
 par.add_argument('--snp-freq','-freq',dest='snpFreq',type=float,help='minimal frequency of SNP in whole population to consider it high-frequent SNP. Default: 0.05',required=False,default=0.05)
+par.add_argument('--nucletide-number-to-check','-nucs',dest='nucNumToCheck',type=int,help='Number of nucleotides from 3`-end to check for covering SNPs. Default: None and the program will check all nucleotides',required=False,default=None)
+par.add_argument('--min-multiplex-dimer-dg','-minmultdimerdg',dest='minMultDimerdG',type=int,help="minimal value of free energy of primer dimer formation in one multiplex in kcal/mol. Default: -6",required=False,default=-6)
 par.add_argument('--threads','-th',dest='threads',type=int,help='number of threads. Default: 2',required=False,default=2)
 par.add_argument('--run-name','-run',dest='runName',type=str,help='name of program run. It will be used in the output file names',required=False)
 par.add_argument('--skip-uncovered','-skip',dest='skipUndesigned',action='store_true',help='use this parameter if you want to skip some targets for which primers can not be designed with defined parameters')
@@ -2191,7 +2217,7 @@ else:
     if args.snps:
         print('Analyzing primers for covering high-frequent SNPs...')
         logger.info('Analyzing primers for covering high-frequent SNPs...')
-        primerPairsNonCoveringSNPs,primersCoveringSNPs,localGenomeDB=analyzePrimersForCrossingSNP(primersInfo,args.threads,{},args.genomeVersion)
+        primerPairsNonCoveringSNPs,primersCoveringSNPs,localGenomeDB=analyzePrimersForCrossingSNP(primersInfo,args.threads,{},args.genomeVersion,args.nucNumToCheck)
         if len(primersCoveringSNPs)>0:
             print(" Removing primer pairs covering high-frequent SNPs...")
             logger.info(" Removing primer pairs covering high-frequent SNPs...")
@@ -2562,7 +2588,7 @@ else:
             if args.snps:
                 print('Analyzing external primers for covering high-frequent SNPs...')
                 logger.info('Analyzing external primers for covering high-frequent SNPs...')
-                primerPairsNonCoveringSNPs,primersCoveringSNPs,localGenomeDB=analyzePrimersForCrossingSNP(extPrimersInfo,args.threads,localGenomeDB,args.genomeVersion)
+                primerPairsNonCoveringSNPs,primersCoveringSNPs,localGenomeDB=analyzePrimersForCrossingSNP(extPrimersInfo,args.threads,localGenomeDB,args.genomeVersion,args.nucNumToCheck)
                 print("\n # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
                 logger.info(" # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
             # Now we need to remove unspecific primer pairs
