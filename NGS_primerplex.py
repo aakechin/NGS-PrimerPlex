@@ -1106,7 +1106,7 @@ def checkPrimerCoordinatesWithOtherPrimers(primer1,regions1,primers2,maxNonSpecL
                     unspecificPrimers.add('_'.join([fPrimer1,rPrimer2]))
     return(unspecificPrimers)
 
-def removeBadPrimerPairs(primersInfoByChrom,goodPrimers,primersToAmplNames,amplNames):
+def removeBadPrimerPairs(primersInfoByChrom,primersInfo,goodPrimers,primersToAmplNames,amplNames):
     newPrimersInfoByChrom={}
     for chrom,primers in primersInfoByChrom.items():
         for primerPairName,primers in primers.items():
@@ -1130,8 +1130,9 @@ def removeBadPrimerPairs(primersInfoByChrom,goodPrimers,primersToAmplNames,amplN
                     for amplName in amplNamesToDelete:
                         curRegionName=amplName[:amplName.rfind('_')]
                         amplNames[curRegionName].remove(amplName)
+                primersInfo.pop(primerPairName)
     primersInfoByChrom=deepcopy(newPrimersInfoByChrom)
-    return(primersInfoByChrom,amplNames)
+    return(primersInfoByChrom,primersInfo,amplNames)
 
 def checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regionsCoords,filterMessage='by specificity',skipUndesigned=False):
     someInputRegionUncovered=False
@@ -1573,7 +1574,9 @@ def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,ar
 ## nums are numbers of multiplexes to which we try to put new primer
 ## globalMultiplexNums are lists of multiplexes with primers and their amplicon coordinates [primer1, primer2, amplStart, amplEnd]
 ## unspecificPrimers is a list of primer pairs that form unspecific products 
-def checkPrimersFit(primers,primersToCompare,minmultdimerdg=-6,unspecificPrimers=None):
+def checkPrimersFit(primers,primersToCompare,
+                    minmultdimerdg1=-6,minmultdimerdg2=-10,
+                    unspecificPrimers=None):
     leftPrimer,rightPrimer=primersToCompare[0:2]
     chrom,amplStart,amplEnd=primersToCompare[3:6]
     # We need to check the following:
@@ -1588,26 +1591,22 @@ def checkPrimersFit(primers,primersToCompare,minmultdimerdg=-6,unspecificPrimers
             # If there is intersection of length more than 5 bp, these primers pair do not correspond each other
             return(False,'Amplicons overlap')
     # Secondary structure with 5'-overhang
-    maxdG=minmultdimerdg
-    maxdG2=-12
+    maxdG=minmultdimerdg1
+    maxdG2=minmultdimerdg2
     dG1=primer3.calcHeterodimer(primers[0],leftPrimer).dg/1000
     dG2=primer3.calcHeterodimer(primers[0],rightPrimer).dg/1000
     dG3=primer3.calcHeterodimer(primers[1],leftPrimer).dg/1000
     dG4=primer3.calcHeterodimer(primers[1],rightPrimer).dg/1000
     if (calcThreeStrikeEndDimer(primers[0],leftPrimer)<maxdG
-##        (dG1<maxdG and (revCompl(primers[0][-5:]) in leftPrimer[1:] or revCompl(leftPrimer[-5:]) in primers[0][1:]))
         or dG1<maxdG2):
         return(False,'Heterodimer of F-primer with F-primer')
     if (calcThreeStrikeEndDimer(primers[0],rightPrimer)<maxdG
-##        (dG2<maxdG and (revCompl(primers[0][-5:]) in rightPrimer[1:] or revCompl(rightPrimer[-5:]) in primers[0][1:]))
         or dG2<maxdG2):
         return(False,'Heterodimer of F-primer with R-primer')
     if (calcThreeStrikeEndDimer(primers[1],leftPrimer)<maxdG
-##        (dG3<maxdG and (revCompl(primers[1][-5:]) in leftPrimer[1:] or revCompl(leftPrimer[-5:]) in primers[1][1:]))
         or dG3<maxdG2):
         return(False,'Heterodimer of R-primer with F-primer')
     if (calcThreeStrikeEndDimer(primers[1],rightPrimer)<maxdG
-##        (dG4<maxdG and (revCompl(primers[1][-5:]) in rightPrimer[1:] or revCompl(rightPrimer[-5:]) in primers[1][1:]))
         or dG4<maxdG2):
         return(False,'Heterodimer of R-primer with R-primer')
     # Unspecific products
@@ -1729,7 +1728,16 @@ par.add_argument('--max-nonspecific-amplicon-length','-maxnonspeclen',dest='maxN
 par.add_argument('--snps','-snps',dest='snps',action='store_true',help="use this parameter if you want to check that 3'-ends of your primers do not cover any SNPs with high frequency")
 par.add_argument('--snp-freq','-freq',dest='snpFreq',type=float,help='minimal frequency of SNP in whole population to consider it high-frequent SNP. Default: 0.05',required=False,default=0.05)
 par.add_argument('--nucletide-number-to-check','-nucs',dest='nucNumToCheck',type=int,help='Number of nucleotides from 3`-end to check for covering SNPs. Default: None and the program will check all nucleotides',required=False,default=None)
-par.add_argument('--min-multiplex-dimer-dg','-minmultdimerdg',dest='minMultDimerdG',type=int,help="minimal value of free energy of primer dimer formation in one multiplex in kcal/mol. Default: -6",required=False,default=-6)
+par.add_argument('--min-multiplex-dimer-dg1','-minmultdimerdg1',
+                 dest='minMultDimerdG1',type=int,
+                 help="minimal acceptable value of free energy of primer dimer formation "
+                      "with hybridized 3'-end in one multiplex in kcal/mol. Default: -6",
+                 required=False,default=-6)
+par.add_argument('--min-multiplex-dimer-dg2','-minmultdimerdg2',
+                 dest='minMultDimerdG2',type=int,
+                 help="minimal acceptable value of free energy of primer dimer formation "
+                      "in one multiplex in kcal/mol. Default: -10",
+                 required=False,default=-10)
 par.add_argument('--threads','-th',dest='threads',type=int,help='number of threads. Default: 2',required=False,default=2)
 par.add_argument('--run-name','-run',dest='runName',type=str,help='name of program run. It will be used in the output file names',required=False)
 par.add_argument('--skip-uncovered','-skip',dest='skipUndesigned',action='store_true',help='use this parameter if you want to skip some targets for which primers can not be designed with defined parameters')
@@ -1869,7 +1877,9 @@ if args.primersFile:
             if len(globalMultiplexNums)>0:
                 for node in globalMultiplexNums.nodes():
                     try:
-                        fit,problem=checkPrimersFit(internalPrimers[0:2]+[chrom,amplStart,amplEnd],outputInternalPrimers[node],args.minMultDimerdG)
+                        fit,problem=checkPrimersFit(internalPrimers[0:2]+[chrom,amplStart,amplEnd],
+                                                    outputInternalPrimers[node],
+                                                    args.minMultDimerdG1,args.minMultDimerdG2)
                     except KeyError:
                         print('ERROR:',outputInternalPrimers.keys())
                         print(globalMultiplexNums.nodes())
@@ -2073,7 +2083,10 @@ if args.primersFile:
         for k,(regionName,extPrimers) in enumerate(sorted(outputExternalPrimers.items())):
             for node in sorted(outputExternalPrimers.keys())[k+1:]:
                 if node==regionName: continue
-                fit,problem=checkPrimersFit(extPrimers[0:2]+extPrimers[3:6],outputExternalPrimers[node],args.minMultDimerdG,unspecificPrimers)
+                fit,problem=checkPrimersFit(extPrimers[0:2]+extPrimers[3:6],
+                                            outputExternalPrimers[node],
+                                            args.minMultDimerdG1,args.minMultDimerdG2,
+                                            unspecificPrimers)
                 if not fit:
                     mpws.write_row(mpwsRowNum,0,[','.join(extPrimers[0:2]),','.join(outputExternalPrimers[node][0:2]),problem])
                     mpwsRowNum+=1
@@ -2158,23 +2171,24 @@ else:
         primersInfo,primersInfoByChrom=readDraftPrimers(args.draftFile)
         print('Number of primer pairs from draft file: '+str(len(primersInfo)))
         logger.info('Number of primer pairs from draft file: '+str(len(primersInfo)))
-        # Get regions that uncovered by already designed primers
-        print('Getting positions that uncovered by draft primers...')
-        logger.info('Getting positions that uncovered by draft primers...')
-        uncoveredRegions,amplNames,primersToAmplNames=getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom)
-        if len(uncoveredRegions)>0:
-            # Go through all regions sorted by chromosome and coordinate of start
-            print('Creating input parameters for primer3...')
-            logger.info('Creating input parameters for primer3...')
-            primer3Params=createPrimer3_parameters(uncoveredRegions,args,regionNameToPrimerType=regionNameToPrimerType)
-            # Construct primers for each created set of parameters
-            print('Constructing primers...')
-            logger.info('Constructing primers...')
-            # primer3Params,regionNameToChrom,args,regionsCoords=None,allRegions=None,primersInfo=None,primersInfoByChrom=None,amplNames=None,primersToAmplNames=None
-            primersInfo,primersInfoByChrom,amplNames,primersToAmplNames,regionsCoords,regionNameToChrom,uncoveredRegions=constructInternalPrimers(primer3Params,regionNameToChrom,args,regionsCoords,allRegions,
-                                                                                                                                                  primersInfo,primersInfoByChrom,amplNames,primersToAmplNames)
-            print('Total number of primer pairs: '+str(len(primersInfo)))
-            logger.info('Total number of primer pairs: '+str(len(primersInfo)))
+        if not args.skipUndesigned:
+            # Get regions that uncovered by already designed primers
+            print('Getting positions that uncovered by draft primers...')
+            logger.info('Getting positions that uncovered by draft primers...')
+            uncoveredRegions,amplNames,primersToAmplNames=getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom)
+            if len(uncoveredRegions)>0:
+                # Go through all regions sorted by chromosome and coordinate of start
+                print('Creating input parameters for primer3...')
+                logger.info('Creating input parameters for primer3...')
+                primer3Params=createPrimer3_parameters(uncoveredRegions,args,regionNameToPrimerType=regionNameToPrimerType)
+                # Construct primers for each created set of parameters
+                print('Constructing primers...')
+                logger.info('Constructing primers...')
+                # primer3Params,regionNameToChrom,args,regionsCoords=None,allRegions=None,primersInfo=None,primersInfoByChrom=None,amplNames=None,primersToAmplNames=None
+                primersInfo,primersInfoByChrom,amplNames,primersToAmplNames,regionsCoords,regionNameToChrom,uncoveredRegions=constructInternalPrimers(primer3Params,regionNameToChrom,args,regionsCoords,allRegions,
+                                                                                                                                                      primersInfo,primersInfoByChrom,amplNames,primersToAmplNames)
+                print('Total number of primer pairs: '+str(len(primersInfo)))
+                logger.info('Total number of primer pairs: '+str(len(primersInfo)))
     else:                            
         # Go through all regions sorted by chromosome and coordinate of start
         print('Creating input parameters for primer3...')
@@ -2198,7 +2212,7 @@ else:
         # Now we need to remove all unspecific primers from constructed primer pairs
         print(' Removing unspecific primer pairs...')
         logger.info(' Removing unspecific primer pairs...')
-        primersInfoByChrom,amplNames=removeBadPrimerPairs(primersInfoByChrom,specificPrimers,primersToAmplNames,amplNames)
+        primersInfoByChrom,primersInfo,amplNames=removeBadPrimerPairs(primersInfoByChrom,primersInfo,specificPrimers,primersToAmplNames,amplNames)
         # Write primers that left after filtering by specificity
         writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_specificity.xls',specificPrimers)
         # If we filtered primers out by specificity, we need to check that all input regions are still covered
@@ -2221,7 +2235,7 @@ else:
         if len(primersCoveringSNPs)>0:
             print(" Removing primer pairs covering high-frequent SNPs...")
             logger.info(" Removing primer pairs covering high-frequent SNPs...")
-            primersInfoByChrom,amplNames=removeBadPrimerPairs(primersInfoByChrom,primerPairsNonCoveringSNPs,primersToAmplNames,amplNames)
+            primersInfoByChrom,primersInfo,amplNames=removeBadPrimerPairs(primersInfoByChrom,primersInfo,primerPairsNonCoveringSNPs,primersToAmplNames,amplNames)
             # Write primers that left after filtering by covering SNPs
             writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_SNPs.xls',primerPairsNonCoveringSNPs)
             # If we filtered primers out that cover SNPs, we need to check that all input regions are still covered
@@ -2404,7 +2418,10 @@ else:
                     if len(globalMultiplexNums)>0:
                         for node in globalMultiplexNums.nodes():
                             try:
-                                fit,problem=checkPrimersFit(c+[chrom,amplStart,amplEnd],outputInternalPrimers[node],args.minMultDimerdG,unspecificPrimers)
+                                fit,problem=checkPrimersFit(c+[chrom,amplStart,amplEnd],
+                                                            outputInternalPrimers[node],
+                                                            args.minMultDimerdG1,args.minMultDimerdG2,
+                                                            unspecificPrimers)
                             except KeyError:
                                 print('ERROR:',outputInternalPrimers.keys())
                                 print(globalMultiplexNums.nodes())
@@ -2659,7 +2676,10 @@ else:
                 for k,(regionName,extPrimers) in enumerate(sorted(outputExternalPrimers.items())):
                     for node in sorted(outputExternalPrimers.keys())[k+1:]:
                         if node==regionName: continue
-                        fit,problem=checkPrimersFit(extPrimers[0:2]+extPrimers[3:6],outputExternalPrimers[node],args.minMultDimerdG,unspecificPrimers)
+                        fit,problem=checkPrimersFit(extPrimers[0:2]+extPrimers[3:6],
+                                                    outputExternalPrimers[node],
+                                                    args.minMultDimerdG1,args.minMultDimerdG2,
+                                                    unspecificPrimers)
                         if not fit:
                             mpws.write_row(mpwsRowNum,0,[','.join(extPrimers[0:2]),','.join(outputExternalPrimers[node][0:2]),problem])
                             mpwsRowNum+=1
