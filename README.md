@@ -55,11 +55,10 @@ All of the Python-scripts listed above work under Python3+ and require the follo
 * xlrd
 * xlsxwriter
 * networkx (version==1.11, newer versions has different sintaxis)
-* myvariant
 
 They can be installed with pip:
 
-`sudo pip3 install biopython argparse primer3-py logging pysam xlrd xlsxwriter "networkx==1.11" myvariant`
+`sudo pip3 install biopython argparse primer3-py logging pysam xlrd xlsxwriter "networkx==1.11"`
 
 Also, for searching non-target primer hybridization, it uses BWA, so you need to install it with e.g.:
 
@@ -72,7 +71,20 @@ twoBitToFa hg19.2bit ucsc.hg19.fa
 bwa index ucsc.hg19.fasta
 ```
 
-It will take some time. If you want to automatically extract genome regions for genes needed, you will have to also download GenBank-files for each of chromosome for genome version that you are going to use, e.g. from [NCBI Genome database](https://www.ncbi.nlm.nih.gov/genome/). And, finally, you can run your primer design:
+It will take some time. If you want to automatically extract genome regions for genes needed, you will have to also download GenBank-files for each of chromosome for genome version that you are going to use, e.g. from [NCBI Genome database](https://www.ncbi.nlm.nih.gov/genome/). 
+
+If you want to check primers for crossing SNPs, download dbSNP VCF-file for the correspondent version of human genome. For hg19:
+```
+wget ftp://ftp.ncbi.nih.gov/snp/organisms/human_9606_b151_GRCh37p13/VCF/common_all_20180423.vcf.gz
+wget ftp://ftp.ncbi.nih.gov/snp/organisms/human_9606_b151_GRCh37p13/VCF/common_all_20180423.vcf.gz.tbi
+```
+For hg38:
+```
+wget ftp://ftp.ncbi.nih.gov/snp/organisms/human_9606_b151_GRCh38p7/VCF/common_all_20180418.vcf.gz
+wget ftp://ftp.ncbi.nih.gov/snp/organisms/human_9606_b151_GRCh38p7/VCF/common_all_20180418.vcf.gz.tbi
+```
+
+And, finally, you can run your primer design:
 
 ```
 cd NGS-PrimerPlex/ 
@@ -153,8 +165,6 @@ Other parameters of NGS-primerplex.py are listed below (the most of parameters h
                         for the left regions
   --whole-genome-ref WHOLEGENOMEREF, -wgref WHOLEGENOMEREF
                         file with INDEXED whole-genome reference sequence
-  --genome-version GENOMEVERSION, -gv GENOMEVERSION
-                        version of genome (hg19 or hg38). Default: hg19
   --min-amplicon-length MINAMPLLEN, -minampllen MINAMPLLEN
                         minimal length of amplicons. Default: 75
   --max-amplicon-length MAXAMPLLEN, -maxampllen MAXAMPLLEN
@@ -218,6 +228,10 @@ Other parameters of NGS-primerplex.py are listed below (the most of parameters h
                         use this parameter if you want NGS-PrimerPlex to
                         automatically use less stringent parameters if no
                         primer were constructed for some region
+  --tries-to-get-best-combination TRIESTOGETCOMBINATION, -tries TRIESTOGETCOMBINA
+                        number of of tries to get the best primer combination.
+                        More the value, better combination will be, but this
+                        will take more time. Default: 1000
   --return-variants-number RETURNVARIANTSNUM, -returnvariantsnum RETURNVARIANTSNUM
                         number of multiplexes variants that user wants to get
                         after all analyses and filters. Default: 1
@@ -244,12 +258,23 @@ Other parameters of NGS-primerplex.py are listed below (the most of parameters h
   --snps, -snps         use this parameter if you want to check that 3'-ends
                         of your primers do not cover any SNPs with high
                         frequency
-  --min-multiplex-dimer-dg MINMULTDIMERDG, -minmultdimerdg MINMULTDIMERDG
-                        minimal value of free energy of primer dimer formation
-                        in one multiplex in kcal/mol. Default: -6
+  --dbsnp-vcf DBSNPVCFFILE, -dbsnp DBSNPVCFFILE
+                        VCF-file (may be gzipped) with dbSNP variations
   --snp-freq SNPFREQ, -freq SNPFREQ
                         minimal frequency of SNP in whole population to
                         consider it high-frequent SNP. Default: 0.05
+  --nucletide-number-to-check NUCNUMTOCHECK, -nucs NUCNUMTOCHECK
+                        Number of nucleotides from 3`-end to check for
+                        covering SNPs. Default: None and the program will
+                        check all nucleotides
+  --min-multiplex-dimer-dg1 MINMULTDIMERDG1, -minmultdimerdg1 MINMULTDIMERDG1
+                        minimal acceptable value of free energy of primer
+                        dimer formation with hybridized 3'-end in one
+                        multiplex in kcal/mol. Default: -6
+  --min-multiplex-dimer-dg2 MINMULTDIMERDG2, -minmultdimerdg2 MINMULTDIMERDG2
+                        minimal acceptable value of free energy of primer
+                        dimer formation in one multiplex in kcal/mol. Default:
+                        -10
   --threads THREADS, -th THREADS
                         number of threads. Default: 2
   --run-name RUNNAME, -run RUNNAME
