@@ -30,7 +30,7 @@ for sheetNum in range(wb.nsheets):
     ws=wb.sheet_by_index(sheetNum)
     for i in range(ws.nrows):
         row=ws.row_values(i)
-        if i==0:
+        if i==0 or row[4]=='':
             continue
         newRow=['_'.join(row[1:3]),row[5],len(row[1]),
                 row[6],len(row[2]),
