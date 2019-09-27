@@ -18,6 +18,7 @@ from operator import itemgetter
 import xlsxwriter as xls
 import networkx as nx
 import networkx.algorithms.clique as clique
+import networkx.algorithms.shortest_paths.weighted as weighted_shortest_paths
 from itertools import islice
 import myvariant
 from collections import Counter
@@ -1168,7 +1169,7 @@ def checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regio
     return(newAmplNames,allRegions,regionNameToChrom,regionsCoords)
 
 def analyzePrimersForCrossingSNP(primersInfo,threads,
-                                 localGenomeDB={},genomeVersion='hg19',
+                                 dbSnpVcfFile,
                                  end3Len=None):
     p=ThreadPool(threads)
     results=[]
@@ -1186,17 +1187,17 @@ def analyzePrimersForCrossingSNP(primersInfo,threads,
         strand1=1; strand2=-1
         if primer1!='':
             results.append(p.apply_async(checkPrimerForCrossingSNP,(primer1,chrom,start1,end1,strand1,
-                                                                    localGenomeDB,args.snpFreq,
-                                                                    genomeVersion,end3Len)))
+                                                                    dbSnpVcfFile,args.snpFreq,
+                                                                    end3Len)))
         if primer2!='':
             results.append(p.apply_async(checkPrimerForCrossingSNP,(primer2,chrom,start2,end2,strand2,
-                                                                    localGenomeDB,args.snpFreq,
-                                                                    genomeVersion,end3Len)))
+                                                                    dbSnpVcfFile,args.snpFreq,
+                                                                    end3Len)))
     primersCoveringSNPs=[]
     wholeWork=len(results)
     done=0
     for res in results:
-        primer,result,localGenomeDB=res.get()
+        primer,result=res.get()
         if result:
             primersCoveringSNPs.append(primer)
         done+=1
@@ -1210,13 +1211,12 @@ def analyzePrimersForCrossingSNP(primersInfo,threads,
             primerPairsNonCoveringSNPs.append(primers)
     print("\n # Number of primers that do not overlap with high-frequent SNPs: "+str(len(primerPairsNonCoveringSNPs)))
     logger.info("\n # Number of primers that do not overlap with high-frequent SNPs: "+str(len(primerPairsNonCoveringSNPs)))
-    return(primerPairsNonCoveringSNPs,primersCoveringSNPs,localGenomeDB)    
+    return(primerPairsNonCoveringSNPs,primersCoveringSNPs)    
 
 # checkPrimerForCrossingSNP checks, if primer crosses some SNPs with high frequence in population
 def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,
-                              localGenomeDB={},freq=0.1,
-                              genomeVersion='hg19',end3Len=None):
-    mv=myvariant.MyVariantInfo()
+                              dbSnpVcfFile,freq=0.1,end3Len=None):
+    vcf=pysam.VariantFile(dbSnpVcfFile)
     # end3Len sets number of nucleotides from the 3'-end that we will check
     if end3Len!=None:
         if strand>0:
@@ -1226,71 +1226,18 @@ def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,
     # Previously, we only filtered out primers that crossed SNP by 3'-end
     # Now, we filter primers that cross SNP by any of its sequence
     hfSnpFound=False
-    for i,coord in enumerate(range(start,end+1)):
-        if strand>0:
-            nuc=primer[i]
-        else:
-            nuc=primer[-(i+1)]
-        coordStr='_'.join([str(chrom),str(coord)])
-        if coordStr not in localGenomeDB.keys():
-            tryNum=1
-            while(True):
-                try:
-                    if strand>0:
-                        mvRes=mv.query('dbsnp.chrom:'+str(chrom)+' && dbsnp.'+genomeVersion+'.start:'+str(coord),fields='dbsnp')
-                    else:
-                        mvRes=mv.query('dbsnp.chrom:'+str(chrom)+' && dbsnp.'+genomeVersion+'.start:'+str(coord),fields='dbsnp')
-                except Exception as e:
-                    tryNum+=1
-                    if tryNum==10:
-                        print('ERROR! Could not check primer for crossing SNPs with the following parameters:')
-                        logger.error('ERROR! Could not check primer for crossing SNPs with the following parameters:')
-                        print(primer,chrom,start,end,strand)
-                        logger.error(', '.join([primer,str(chrom),str(start),str(end),str(strand)]))
-                        print(e)
-                        logger.error(e)
-                        exit(21)
-                    continue
-                break
-            alFreqs={}
-            for hit in mvRes['hits']:
-                if 'alleles' not in hit['dbsnp'].keys():
-                    continue
-                for al in hit['dbsnp']['alleles']:
-                    if ('freq' not in al.keys() or
-                        '1000g' not in al['freq'].keys()):
-                        continue
-                    try:
-                        if al['allele'] in alFreqs.keys():
-                            if alFreqs[al['allele']]==al['freq']['1000g']:
-                                continue
-                            else:
-                                print('ERROR! Different frequencies for the same allele:')
-                                print(alFreqs[al['allele']],al['freq']['1000g'])
-                                print(al['allele'])
-                                exit(47)
-                        else:
-                            alFreqs[al['allele']]=al['freq']['1000g']
-                    except KeyError:
-                        print('ERROR!',mvRes)
-                        print(al['freq'])
-                        print(al['allele'])
-                        exit(11)
-                ref=hit['dbsnp']['ref']
-                if ref in alFreqs.keys():
-                    alFreqs.pop(ref)
-            for al,alFreq in alFreqs.items():
-                if alFreq>=freq:
-                    hfSnpFound=True
-            if coordStr not in localGenomeDB.keys():
-                localGenomeDB[coordStr]=hfSnpFound
-            else:
-                localGenomeDB[coordStr]=hfSnpFound
-            if hfSnpFound:
-                return(primer,hfSnpFound,localGenomeDB)
-        elif localGenomeDB[coordStr]==True:
-            return(primer,localGenomeDB[coordStr],localGenomeDB)
-    return(primer,hfSnpFound,localGenomeDB)
+    chrom=chrom.replace('chr','')
+    if chrom=='23':
+        chrom='X'
+    elif chrom=='24':
+        chrom='Y'
+    snps=[]
+    for snp in vcf.fetch(chrom,start-1,end+1):
+        if float(snp.info['CAF'][0])<1-freq:
+            snps.append(snp)
+    if len(snps)>0:
+        hfSnpFound=True
+    return(primer,hfSnpFound)
 
 # joinAmpliconsToAmplifiedBlocks joins neighbourhing or overlapping amplicons to blocks
 # Minimal path is a path of one primer:
@@ -1447,6 +1394,169 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
                 if j>=args.returnVariantsNum: break
         blocksFinalShortestPaths.append(finalShortestPaths)
     return(chrom,blocksFinalShortestPaths)
+
+def getBestPrimerCombinations(allRegionsAmplifiedBlocks,
+                              primersInfo,
+                              returnVarNum=1,
+                              triesToGetCombination=1000,
+                              totalMultiplexVariants=1000):
+    # Save interaction numbers for all possible pairs of blocks
+    allBlockPairValues={}
+    # Go through all blocks
+    # Go through all chromosomes
+    for i,chrom1 in enumerate(sorted(allRegionsAmplifiedBlocks.keys())):
+        # Go through all blocks of current chromosome
+        for k,block1 in enumerate(allRegionsAmplifiedBlocks[chrom1]):
+            # Go through all chromosomes
+            for j,chrom2 in enumerate(sorted(allRegionsAmplifiedBlocks.keys())):
+                # If chrom2 is sorted earlier than chrom1, skip chrom2
+                if j<i:
+                    continue
+                # If it is the last block of chrom1, we skip this chromosome
+                if (k==len(allRegionsAmplifiedBlocks[chrom1])-1 and
+                    chrom1==chrom2):
+                    continue
+                # If it the same chromosome
+                else:
+                    if chrom1==chrom2:
+                        startNum=k+1
+                    else:
+                        startNum=0
+                    # Go through all blocks of the 2nd blocks to compare
+                    for z,block2 in enumerate(allRegionsAmplifiedBlocks[chrom2][startNum:]):
+                        # Go through all variants of current block1
+                        for q,block1_var in enumerate(block1):
+                            # Go through all variants of current block2
+                            for w,block2_var in enumerate(block2):
+                                # Get number of interacting primers
+                                interNum=comparePrimersOfTwoBlocks(block1_var,block2_var)
+                                block_ID1='_'.join([str(chrom1),str(k),str(q)])
+                                block_ID2='_'.join([str(chrom2),str(startNum+z),str(w)])
+                                if chrom1 not in allBlockPairValues.keys():
+                                    allBlockPairValues[chrom1]={}
+                                if k not in allBlockPairValues[chrom1].keys():
+                                    allBlockPairValues[chrom1][k]={}
+                                if q not in allBlockPairValues[chrom1][k].keys():
+                                    allBlockPairValues[chrom1][k][q]={}
+                                allBlockPairValues[chrom1][k][q][block_ID2]=interNum
+                                if chrom2 not in allBlockPairValues.keys():
+                                    allBlockPairValues[chrom2]={}
+                                if startNum+z not in allBlockPairValues[chrom2].keys():
+                                    allBlockPairValues[chrom2][startNum+z]={}
+                                if w not in allBlockPairValues[chrom2][startNum+z].keys():
+                                    allBlockPairValues[chrom2][startNum+z][w]={}
+                                allBlockPairValues[chrom2][startNum+z][w][block_ID1]=interNum
+    # Create graph with all blocks and their variants
+    import networkx as nx
+    g=nx.Graph()
+    # Go through all chromosomes
+    for i,chrom in enumerate(sorted(allRegionsAmplifiedBlocks.keys())):
+        # Go through all blocks of current chromosome
+        for k,block in enumerate(allRegionsAmplifiedBlocks[chrom]):
+            # If it the last block of the current chromosome,
+            # we need to compare it with the 1st block of the next chromosome
+            if (i!=len(allRegionsAmplifiedBlocks.keys())-1 and
+                k==len(allRegionsAmplifiedBlocks[chrom])-1):
+                chrom2=sorted(allRegionsAmplifiedBlocks.keys())[i+1]
+                blockNum2=0
+            else:
+                chrom2=chrom
+                blockNum2=k+1
+            # Go through all variants of the current block
+            for q,blockVarNum1 in enumerate(allBlockPairValues[chrom][k].keys()):
+                block_ID1='_'.join([str(chrom),str(k),str(blockVarNum1)])
+                # if it is the 1st chromosome in the list and the 1st block
+                if i==0 and k==0:
+                    # Create edge from start to the 1st block variants
+                    g.add_edge('start',block_ID1,weight=0)
+                # If it the last chromosome and the last block
+                if (i==len(allRegionsAmplifiedBlocks.keys())-1 and
+                    k==len(allRegionsAmplifiedBlocks[chrom])-1):
+                    # And add edge from this block to end
+                    g.add_edge(block_ID1,'end',weight=0)
+                    continue
+                nodeValue1=sum(allBlockPairValues[chrom][k][blockVarNum1].values())
+                # Go through all variants only of the next block
+                for w,blockVarNum2 in enumerate(allBlockPairValues[chrom2][blockNum2].keys()):
+                    block_ID2='_'.join([str(chrom2),str(blockNum2),str(blockVarNum2)])
+                    nodeValue2=sum(allBlockPairValues[chrom2][blockNum2][blockVarNum2].values())
+                    g.add_edge(block_ID1,block_ID2,weight=1000/(nodeValue1+nodeValue2))
+    combNum=0
+    shortestPathFindRepeats=0
+    allPaths=[]
+    pathValues={}
+    print('Searching for the best primer pair combinations...')
+    logger.info('Searching for the best primer pair combinations...')
+    while(shortestPathFindRepeats<triesToGetCombination and combNum<totalMultiplexVariants):
+        for combinationPath in nx.all_shortest_paths(g,
+                                                     'start',
+                                                     'end',
+                                                     weight='weight'):
+            value=getEdgesSumOfWeight(g,combinationPath)
+            interNums=[]
+            for blockVarNum in combinationPath:
+                if blockVarNum not in ['start','end']:
+                    chrom,blockNum,blockVarNum=blockVarNum.split('_')
+                    interNums.append(sum(allBlockPairValues[int(chrom)][int(blockNum)][int(blockVarNum)].values()))
+            if combinationPath not in allPaths:
+                allPaths.append(combinationPath)
+                pathValues[len(allPaths)-1]=(value,sum(interNums))
+                combNum+=1
+        shortestPathFindRepeats+=1
+        edgelist=g.edges(data=True)
+        random.shuffle(edgelist)
+        import networkx as nx
+        g=nx.Graph()
+        randomFloat=random.randint(1,10)/4
+        for edge in edgelist:
+            node1,node2,weight=edge
+            weight=weight['weight']
+            g.add_edge(node1,node2,weight=weight*randomFloat)
+        showPercWork(shortestPathFindRepeats,triesToGetCombination-1)
+    print('\nTotal number of running all_shortest_paths:',shortestPathFindRepeats)
+    logger.info('Total number of running all_shortest_paths: '+str(shortestPathFindRepeats))
+    print('Total number of combinations considered:',combNum)
+    logger.info('Total number of combinations considered: '+str(combNum))
+    combinations=[]
+    for i,combinationPathNum in enumerate(sorted(pathValues.keys(),
+                                                 key=lambda combinationPathNum:pathValues[combinationPathNum][1])):
+        primerPairNum=0
+        combinations.append({})
+        for block_ID in allPaths[combinationPathNum]:
+            if block_ID not in ['start','end']:
+                chrom,blockNum,blockVarNum=map(int,block_ID.split('_'))
+                if chrom not in combinations[-1].keys():
+                    combinations[-1][chrom]={}
+                blockVar=allRegionsAmplifiedBlocks[chrom][blockNum][blockVarNum]
+                for primerPair in blockVar:
+                    combinations[-1][chrom][primersInfo[primerPair][0][0][0]]=primerPair.split('_')
+                    primerPairNum+=1
+        print(' # Number of primer pairs for multiplex variant',i+1,'-',primerPairNum)
+        logger.info(' # Number of primer pairs for multiplex variant '+str(i+1)+': '+str(primerPairNum))
+        if i+1>=returnVarNum:
+            break
+    return(combinations)
+
+def getEdgesSumOfWeight(g,nodes):
+    sumWeight=0
+    for i,node in enumerate(nodes[1:-1]):
+        sumWeight+=g[node][nodes[i]]['weight']
+    return(sumWeight)
+
+# Returns number of interactions for two blocks
+def comparePrimersOfTwoBlocks(block1,block2):
+    interactions=0
+    for primerPair1 in block1:
+        for primerPair2 in block2:
+            allPrimers=[]
+            allPrimers.extend(primerPair1.split('_'))
+            allPrimers.extend(primerPair2.split('_'))
+            for primer1 in allPrimers:
+                for primer2 in allPrimers:
+                    # Check only for 6 nucleotides that can give hybridized 3'-end
+                    if revComplement(primer1[-6:]) in primer2:
+                        interactions+=1
+    return(interactions)
 
 def makeFinalMultiplexes(initialGraph,multiplexes=[],multNum=2,functionFirstCall=False):
     # We try to make cliques from it
@@ -1623,33 +1733,33 @@ def checkPrimersFit(primers,primersToCompare,
 def calcThreeStrikeEndDimer(primer1,primer2,startEndLen=4):
     # Get the longest region of primer1 3'-end that can hybridize to primer2
     endLen=startEndLen
-    if revCompl(primer1[-endLen:]) in primer2:
+    if revComplement(primer1[-endLen:]) in primer2:
         while(endLen<len(primer1)):
             endLen+=1
-            if revCompl(primer1[-endLen:]) not in primer2:
+            if revComplement(primer1[-endLen:]) not in primer2:
                 endLen-=1
                 break
         # Get dG for the longest region found
         # We take -1 and +1 nucleotides from the hybridized region
         thermoStart1=min(len(primer1),endLen+1)
-        thermoStart2=max(0,primer2.index(revCompl(primer1[-endLen:]))-1)
-        thermoEnd2=min(len(primer2),primer2.index(revCompl(primer1[-endLen:]))+endLen+1)
+        thermoStart2=max(0,primer2.index(revComplement(primer1[-endLen:]))-1)
+        thermoEnd2=min(len(primer2),primer2.index(revComplement(primer1[-endLen:]))+endLen+1)
         dG1=primer3.calcHeterodimer(primer1[-thermoStart1:],primer2[thermoStart2:thermoEnd2]).dg/1000
     else:
         dG1=0
     # Get the longest region of primer2 3'-end that can hybridize to primer1
     endLen=startEndLen
-    if revCompl(primer2[-endLen:]) in primer1:
+    if revComplement(primer2[-endLen:]) in primer1:
         while(endLen<len(primer2)):
             endLen+=1
-            if revCompl(primer2[-endLen:]) not in primer1:
+            if revComplement(primer2[-endLen:]) not in primer1:
                 endLen-=1
                 break
         # Get dG for the longest region found
         # We take -1 and +1 nucleotides from the hybridized region
         thermoStart1=min(len(primer2),endLen+1)
-        thermoStart2=max(0,primer1.index(revCompl(primer2[-endLen:]))-1)
-        thermoEnd2=min(len(primer1),primer1.index(revCompl(primer2[-endLen:]))+endLen+1)
+        thermoStart2=max(0,primer1.index(revComplement(primer2[-endLen:]))-1)
+        thermoEnd2=min(len(primer1),primer1.index(revComplement(primer2[-endLen:]))+endLen+1)
         dG2=primer3.calcHeterodimer(primer2[-thermoStart1:],primer1[thermoStart2:thermoEnd2]).dg/1000
     else:
         dG2=0
@@ -1681,71 +1791,207 @@ def showPercWork(done,allWork):
     sys.stdout.write("\r"+str(percDoneWork)+"%")
     sys.stdout.flush()
 
-def revCompl(nuc):
+def revComplement(nuc):
     return(str(Seq.Seq(nuc).reverse_complement()))
 
 # Section of input arguments
 par=argparse.ArgumentParser(description='This script constructs primers for multiplex NGS panels')
-par.add_argument('--regions-file','-regions',dest='regionsFile',type=str,help='file with regions for amplification in the following format:'
+par.add_argument('--regions-file','-regions',
+                 dest='regionsFile',type=str,help='file with regions for amplification in the following format:'
                  'Chromosome{Tab}Start_Position{Tab}End_Position{Tab}Amplicon_Name{Tab}\n'
                  'Desired_Multiplex_Numbers(optional){Tab}Type_Of_Primers(only left/only right/both)(optional){Tab}'
-                 'Use_Whole_Region(optional)',required=True)
-par.add_argument('--primers-file','-primers',dest='primersFile',type=str,help='file with previously designed internal primers. Use this parameter, if you want only to design external primers',required=False)
-par.add_argument('--draft-primers','-draft',dest='draftFile',type=str,help='file with internal primers previously designed for part of input regions. The program will design primers for the left regions',required=False)
-par.add_argument('--whole-genome-ref','-wgref',dest='wholeGenomeRef',type=str,help='file with INDEXED whole-genome reference sequence',required=True)
-par.add_argument('--genome-version','-gv',dest='genomeVersion',type=str,help='version of genome (hg19 or hg38). Default: hg19',required=False,default='hg19')
-par.add_argument('--min-amplicon-length','-minampllen',dest='minAmplLen',type=int,help='minimal length of amplicons. Default: 75',required=False,default=75)
-par.add_argument('--max-amplicon-length','-maxampllen',dest='maxAmplLen',type=int,help='maximal length of amplicons. Default: 100',required=False,default=100)
-par.add_argument('--optimal-amplicon-length','-optampllen',dest='optAmplLen',type=int,help='optimal length of amplicons. Default: 90',required=False,default=90)
-par.add_argument('--min-primer-length','-minprimerlen',dest='minPrimerLen',type=int,help='minimal length of primers. Default: 18',required=False,default=18)
-par.add_argument('--max-primer-length','-maxprimerlen',dest='maxPrimerLen',type=int,help='maximal length of primers. Default: 25',required=False,default=25)
-par.add_argument('--optimal-primer-length','-optprimerlen',dest='optPrimerLen',type=int,help='optimal length of primers. Default: 23',required=False,default=23)
-par.add_argument('--min-primer-melting-temp','-minprimermelt',dest='minPrimerMelt',type=int,help='minimal melting temperature of primers, degrees Celsius. Default: 62',required=False,default=62)
-par.add_argument('--max-primer-melting-temp','-maxprimermelt',dest='maxPrimerMelt',type=int,help='maximal melting temperature of primers, degrees Celsius. Default: 66',required=False,default=66)
-par.add_argument('--optimal-primer-melting-temp','-optprimermelt',dest='optPrimerMelt',type=int,help='optimal melting temperature of primers, degrees Celsius. Default: 64',required=False,default=64)
-par.add_argument('--min-primer-gc','-minprimergc',dest='minPrimerGC',type=int,help='minimal acceptable GC-content for primers. Default: 25',required=False,default=25)
-par.add_argument('--max-primer-gc','-maxprimergc',dest='maxPrimerGC',type=int,help='maximal acceptable GC-content for primers. Default: 60',required=False,default=60)
-par.add_argument('--optimal-primer-gc','-optprimergc',dest='optPrimerGC',type=int,help='optimal acceptable GC-content for primers. Default: 40',required=False,default=40)
-par.add_argument('--min-primer-end-gc','-minprimerendgc',dest='minPrimerEndGC',type=int,help="minimal acceptable number of G or C nucleotides within last 5 nucleotides of 3'-end of primers. Default: 1",required=False,default=1)
-par.add_argument('--max-primer-end-gc','-maxprimerendgc',dest='maxPrimerEndGC',type=int,help="maximal acceptable number of G or C nucleotides within last 5 nucleotides of 3'-end of primers. Default: 3",required=False,default=3)
-par.add_argument('--opt-primer-end-gc','-optprimerendgc',dest='optPrimerEndGC',type=int,help="optimal number of G or C nucleotides within last 5 nucleotides of 3'-end of primers. Default: 2",required=False,default=2)
-par.add_argument('--max-primer-poly-n','-maxprimerpolyn',dest='maxPrimerPolyN',type=int,help="maximal acceptable length of some poly-N in primers. Default: 3",required=False,default=3)
-par.add_argument('--max-primer-compl-end-th','-maxprimercomplendth',dest='maxPrimerComplEndTh',type=int,help="maximal Tm for complementarity of 3'-ends of primers. Default: 15",required=False,default=15)
-par.add_argument('--max-primer-compl-any-th','-maxprimercomplanyth',dest='maxPrimerComplAnyTh',type=int,help="maximal Tm for any complementarity of primers. Default: 30",required=False,default=30)
-par.add_argument('--max-primer-hairpin-th','-maxprimerhairpinth',dest='maxPrimerHairpinTh',type=int,help="maximal melting temperature of primer hairpin structure. Default: 40",required=False,default=40)
-par.add_argument('--max-primer-nonspecific','-maxprimernonspec',dest='maxPrimerNonspec',type=int,help="maximal number of nonspecific regions to which primer can hybridizes. Default: 1000",required=False,default=1000)
-par.add_argument('--max-amplicons-overlap','-maxoverlap',dest='maxoverlap',type=int,help='maximal length of overlap between two amplified blocks (it does not include primers). Default: 5',required=False,default=5)
-par.add_argument('--primers-number1','-primernum1',dest='primernum1',type=int,help='number of primer that user wants to get on the 1st stage. The more this value, the more precise the choice of primers, but the longer the design time. Default: 5',required=False,default=5)
-par.add_argument('--auto-adjust-parameters','-autoadjust',dest='autoAdjust',action='store_true',help='use this parameter if you want NGS-PrimerPlex to automatically use less stringent parameters if no primer were constructed for some region')
-par.add_argument('--return-variants-number','-returnvariantsnum',dest='returnVariantsNum',type=int,help='number of multiplexes variants that user wants to get after all analyses and filters. Default: 1',required=False,default=1)
-par.add_argument('--embedded-amplification','-embedded',dest='embeddedAmpl',action='store_true',help='use this parameter if you want to create NGS-panel with embedded amplification')
-par.add_argument('--min-internal-primer-shift','-minprimershift',dest='minPrimerShift',type=int,help="minimal shift of external primer from the 3'-end of internal primer. Default: 5",required=False,default=5)
-par.add_argument('--opt-external-amplicon-length','-optextampllen',dest='optExtAmplLen',type=int,help="optimal length of the external amplicons. Default: 110",required=False,default=110)
-par.add_argument('--max-external-amplicon-length','-maxextampllen',dest='maxExtAmplLen',type=int,help="maximal length of the external amplicons. Default: 130",required=False,default=130)
-par.add_argument('--do-blast','-blast',dest='doBlast',action='store_true',help='use this parameter if you want to perform Blast-analysis of constructed primers')
-par.add_argument('--substititutions-num','-subst',dest='substNum',type=int,help='accepted number of substitutions for searching primers in genome. Default: 2',required=False,default=2)
-par.add_argument('--max-nonspecific-amplicon-length','-maxnonspeclen',dest='maxNonSpecLen',type=int,help='maximal length of nonspecific amplicons that the program should consider. For example, if you design primers for DNA from serum, you can set it as 150. Default: 200',required=False,default=200)
-par.add_argument('--snps','-snps',dest='snps',action='store_true',help="use this parameter if you want to check that 3'-ends of your primers do not cover any SNPs with high frequency")
-par.add_argument('--snp-freq','-freq',dest='snpFreq',type=float,help='minimal frequency of SNP in whole population to consider it high-frequent SNP. Default: 0.05',required=False,default=0.05)
-par.add_argument('--nucletide-number-to-check','-nucs',dest='nucNumToCheck',type=int,help='Number of nucleotides from 3`-end to check for covering SNPs. Default: None and the program will check all nucleotides',required=False,default=None)
+                 'Use_Whole_Region(optional)',
+                 required=True)
+par.add_argument('--primers-file','-primers',
+                 dest='primersFile',type=str,
+                 help='file with previously designed internal primers. Use this parameter, if you want only to design external primers',
+                 required=False)
+par.add_argument('--draft-primers','-draft',
+                 dest='draftFile',type=str,
+                 help='file with internal primers previously designed for part of input regions. The program will design primers for the left regions',
+                 required=False)
+par.add_argument('--whole-genome-ref','-wgref',
+                 dest='wholeGenomeRef',type=str,
+                 help='file with INDEXED whole-genome reference sequence',
+                 required=True)
+par.add_argument('--min-amplicon-length','-minampllen',
+                 dest='minAmplLen',type=int,
+                 help='minimal length of amplicons. Default: 75',
+                 required=False,default=75)
+par.add_argument('--max-amplicon-length','-maxampllen',
+                 dest='maxAmplLen',type=int,
+                 help='maximal length of amplicons. Default: 100',
+                 required=False,default=100)
+par.add_argument('--optimal-amplicon-length','-optampllen',
+                 dest='optAmplLen',type=int,
+                 help='optimal length of amplicons. Default: 90',
+                 required=False,default=90)
+par.add_argument('--min-primer-length','-minprimerlen',
+                 dest='minPrimerLen',type=int,
+                 help='minimal length of primers. Default: 18',
+                 required=False,default=18)
+par.add_argument('--max-primer-length','-maxprimerlen',
+                 dest='maxPrimerLen',type=int,
+                 help='maximal length of primers. Default: 25',
+                 required=False,default=25)
+par.add_argument('--optimal-primer-length','-optprimerlen',
+                 dest='optPrimerLen',type=int,
+                 help='optimal length of primers. Default: 23',
+                 required=False,default=23)
+par.add_argument('--min-primer-melting-temp','-minprimermelt',
+                 dest='minPrimerMelt',type=int,
+                 help='minimal melting temperature of primers, degrees Celsius. Default: 62',
+                 required=False,default=62)
+par.add_argument('--max-primer-melting-temp','-maxprimermelt',
+                 dest='maxPrimerMelt',type=int,
+                 help='maximal melting temperature of primers, degrees Celsius. Default: 66',
+                 required=False,default=66)
+par.add_argument('--optimal-primer-melting-temp','-optprimermelt',
+                 dest='optPrimerMelt',type=int,
+                 help='optimal melting temperature of primers, degrees Celsius. Default: 64',
+                 required=False,default=64)
+par.add_argument('--min-primer-gc','-minprimergc',
+                 dest='minPrimerGC',type=int,
+                 help='minimal acceptable GC-content for primers. Default: 25',
+                 required=False,default=25)
+par.add_argument('--max-primer-gc','-maxprimergc',
+                 dest='maxPrimerGC',type=int,
+                 help='maximal acceptable GC-content for primers. Default: 60',
+                 required=False,default=60)
+par.add_argument('--optimal-primer-gc','-optprimergc',
+                 dest='optPrimerGC',type=int,
+                 help='optimal acceptable GC-content for primers. Default: 40',
+                 required=False,default=40)
+par.add_argument('--min-primer-end-gc','-minprimerendgc',
+                 dest='minPrimerEndGC',type=int,
+                 help="minimal acceptable number of G or C nucleotides within last 5 nucleotides of 3'-end of primers. Default: 1",
+                 required=False,default=1)
+par.add_argument('--max-primer-end-gc','-maxprimerendgc',
+                 dest='maxPrimerEndGC',type=int,
+                 help="maximal acceptable number of G or C nucleotides within last 5 nucleotides of 3'-end of primers. Default: 3",
+                 required=False,default=3)
+par.add_argument('--opt-primer-end-gc','-optprimerendgc',
+                 dest='optPrimerEndGC',type=int,
+                 help="optimal number of G or C nucleotides within last 5 nucleotides of 3'-end of primers. Default: 2",
+                 required=False,default=2)
+par.add_argument('--max-primer-poly-n','-maxprimerpolyn',
+                 dest='maxPrimerPolyN',type=int,
+                 help="maximal acceptable length of some poly-N in primers. Default: 3",
+                 required=False,default=3)
+par.add_argument('--max-primer-compl-end-th','-maxprimercomplendth',
+                 dest='maxPrimerComplEndTh',type=int,
+                 help="maximal Tm for complementarity of 3'-ends of primers. Default: 15",
+                 required=False,default=15)
+par.add_argument('--max-primer-compl-any-th','-maxprimercomplanyth',
+                 dest='maxPrimerComplAnyTh',type=int,
+                 help="maximal Tm for any complementarity of primers. Default: 30",
+                 required=False,default=30)
+par.add_argument('--max-primer-hairpin-th','-maxprimerhairpinth',
+                 dest='maxPrimerHairpinTh',type=int,
+                 help="maximal melting temperature of primer hairpin structure. Default: 40",
+                 required=False,default=40)
+par.add_argument('--max-primer-nonspecific','-maxprimernonspec',
+                 dest='maxPrimerNonspec',type=int,
+                 help="maximal number of nonspecific regions to which primer can hybridizes. Default: 1000",
+                 required=False,default=1000)
+par.add_argument('--max-amplicons-overlap','-maxoverlap',
+                 dest='maxoverlap',type=int,
+                 help='maximal length of overlap between two amplified blocks (it does not include primers). Default: 5',
+                 required=False,default=5)
+par.add_argument('--primers-number1','-primernum1',
+                 dest='primernum1',type=int,
+                 help='number of primer that user wants to get on the 1st stage. The more this value, the more precise the choice of primers, but the longer the design time. Default: 5',
+                 required=False,default=5)
+par.add_argument('--auto-adjust-parameters','-autoadjust',
+                 dest='autoAdjust',action='store_true',
+                 help='use this parameter if you want NGS-PrimerPlex to automatically use less stringent parameters if no primer were constructed for some region')
+par.add_argument('--tries-to-get-best-combination','-tries',
+                 dest='triesToGetCombination',type=int,
+                 help='number of of tries to get the best primer combination. More the value, better combination will be, but this will take more time. Default: 1000',
+                 required=False,default=1000)
+par.add_argument('--return-variants-number','-returnvariantsnum',
+                 dest='returnVariantsNum',type=int,
+                 help='number of multiplexes variants that user wants to get after all analyses and filters. Default: 1',
+                 required=False,default=1)
+par.add_argument('--embedded-amplification','-embedded',
+                 dest='embeddedAmpl',action='store_true',
+                 help='use this parameter if you want to create NGS-panel with embedded amplification')
+par.add_argument('--min-internal-primer-shift','-minprimershift',
+                 dest='minPrimerShift',type=int,
+                 help="minimal shift of external primer from the 3'-end of internal primer. Default: 5",
+                 required=False,default=5)
+par.add_argument('--opt-external-amplicon-length','-optextampllen',
+                 dest='optExtAmplLen',type=int,
+                 help="optimal length of the external amplicons. Default: 110",
+                 required=False,default=110)
+par.add_argument('--max-external-amplicon-length','-maxextampllen',
+                 dest='maxExtAmplLen',type=int,
+                 help="maximal length of the external amplicons. Default: 130",
+                 required=False,default=130)
+par.add_argument('--do-blast','-blast',
+                 dest='doBlast',action='store_true',
+                 help='use this parameter if you want to perform Blast-analysis of constructed primers')
+par.add_argument('--substititutions-num','-subst',
+                 dest='substNum',type=int,
+                 help='accepted number of substitutions for searching primers in genome. Default: 2',
+                 required=False,default=2)
+par.add_argument('--max-nonspecific-amplicon-length','-maxnonspeclen',
+                 dest='maxNonSpecLen',type=int,
+                 help='maximal length of nonspecific amplicons that the program should consider. For example, if you design primers for DNA from serum, you can set it as 150. Default: 200',
+                 required=False,default=200)
+par.add_argument('--snps','-snps',
+                 dest='snps',action='store_true',
+                 help="use this parameter if you want to check that 3'-ends of your primers do not cover any SNPs with high frequency")
+par.add_argument('--dbsnp-vcf','-dbsnp',
+                 dest='dbSnpVcfFile',type=str,
+                 help='VCF-file (may be gzipped) with dbSNP variations',
+                 required=False)
+par.add_argument('--snp-freq','-freq',
+                 dest='snpFreq',type=float,
+                 help='minimal frequency of SNP in whole population to consider it high-frequent SNP. Default: 0.05',
+                 required=False,default=0.05)
+par.add_argument('--nucletide-number-to-check','-nucs',
+                 dest='nucNumToCheck',type=int,
+                 help='Number of nucleotides from 3`-end to check for covering SNPs. Default: None and the program will check all nucleotides',
+                 required=False,default=None)
 par.add_argument('--min-multiplex-dimer-dg1','-minmultdimerdg1',
-                 dest='minMultDimerdG1',type=int,
+                 dest='minMultDimerdG1',type=float,
                  help="minimal acceptable value of free energy of primer dimer formation "
                       "with hybridized 3'-end in one multiplex in kcal/mol. Default: -6",
-                 required=False,default=-6)
+                 required=False,default=-5)
 par.add_argument('--min-multiplex-dimer-dg2','-minmultdimerdg2',
-                 dest='minMultDimerdG2',type=int,
+                 dest='minMultDimerdG2',type=float,
                  help="minimal acceptable value of free energy of primer dimer formation "
                       "in one multiplex in kcal/mol. Default: -10",
                  required=False,default=-10)
-par.add_argument('--threads','-th',dest='threads',type=int,help='number of threads. Default: 2',required=False,default=2)
-par.add_argument('--run-name','-run',dest='runName',type=str,help='name of program run. It will be used in the output file names',required=False)
-par.add_argument('--skip-uncovered','-skip',dest='skipUndesigned',action='store_true',help='use this parameter if you want to skip some targets for which primers can not be designed with defined parameters')
+par.add_argument('--threads','-th',
+                 dest='threads',type=int,
+                 help='number of threads. Default: 2',
+                 required=False,default=2)
+par.add_argument('--run-name','-run',
+                 dest='runName',type=str,
+                 help='name of program run. It will be used in the output file names',
+                 required=False)
+par.add_argument('--skip-uncovered','-skip',
+                 dest='skipUndesigned',action='store_true',
+                 help='use this parameter if you want to skip some targets for which primers can not be designed with defined parameters')
 # Parameters for calculating thermodynamic parameters
-par.add_argument('--monovalent-concentration','-mv',dest='mvConc',type=int,help='Concentration of monovalent cations, commonly K+ or NH4+, in mM. Default: 50',required=False,default=50)
-par.add_argument('--divalent-concentration','-dv',dest='dvConc',type=int,help='Concentration of divalent cations, commonly Mg2+, in mM. Default: 3',required=False,default=3)
-par.add_argument('--dntp-concentration','-dntp',dest='dntpConc',type=float,help='Total concentration of dNTPs. If you have each dNTP with concantration 0.2 mM, then total is 0.8 mM. Default: 0.8',required=False,default=0.8)
-par.add_argument('--primer-concentration','-primerconc',dest='primerConc',type=int,help='Concentration of each primer, in nM. Default: 250',required=False,default=250)
+par.add_argument('--monovalent-concentration','-mv',
+                 dest='mvConc',type=int,
+                 help='Concentration of monovalent cations, commonly K+ or NH4+, in mM. Default: 50',
+                 required=False,default=50)
+par.add_argument('--divalent-concentration','-dv',
+                 dest='dvConc',type=int,
+                 help='Concentration of divalent cations, commonly Mg2+, in mM. Default: 3',
+                 required=False,default=3)
+par.add_argument('--dntp-concentration','-dntp',
+                 dest='dntpConc',type=float,
+                 help='Total concentration of dNTPs. If you have each dNTP with concantration 0.2 mM, then total is 0.8 mM. Default: 0.8',
+                 required=False,default=0.8)
+par.add_argument('--primer-concentration','-primerconc',
+                 dest='primerConc',type=int,
+                 help='Concentration of each primer, in nM. Default: 250',
+                 required=False,default=250)
 args=par.parse_args()
 
 if not args.runName:
@@ -1789,10 +2035,14 @@ if not os.path.exists(wgref):
     print('#'*20+'\nERROR! Whole-genome reference file does not exist:',wgref)
     logger.error('Whole-genome reference file does not exist:'+wgref)
     exit(32)
-if args.genomeVersion not in ['hg19','hg38']:
-    print('#'*20+'\nERROR! Unaccaptable genome version was chosen:',args.genomeVersion+'. It should be hg19 or hg38')
-    logger.error('WUnaccaptable genome version was chosen:'+args.genomeVersion+'. It should be hg19 or hg38')
+if args.snps and not args.dbSnpVcfFile:
+    print('#'*20+'\nERROR! If you want to check primers for crossing SNPs, choose VCF-file with dbSNP variations (-dbsnp)!')
+    logger.error('ERROR! If you want to check primers for crossing SNPs, choose VCF-file with dbSNP variations (-dbsnp)!')
     exit(33)
+if args.dbSnpVcfFile and not os.path.exists(args.dbSnpVcfFile):
+    print('#'*20+'\nERROR! VCF-file with dbSNP variations does not exist:',args.dbSnpVcfFile)
+    logger.error('VCF-file with dbSNP variations does not exist:'+args.dbSnpVcfFile)
+    exit(48)
 
 # We make primer3 parameters for each input position
 ## Later we will send them into multithreading pool
@@ -1995,20 +2245,19 @@ if args.primersFile:
         logger.info('Analyzing external primers for covering high-frequent SNPs...')
         p=ThreadPool(args.threads)
         results=[]
-        localGenomeDB={}
         for primers,info in extPrimersInfo.items():
             primer1,primer2=primers.split('_')
             chrom=info[0]
             start1=info[1]; start2=info[3]
             end1=info[2]; end2=info[4]
             strand1=1; strand2=-1
-            results.append(p.apply_async(checkPrimerForCrossingSNP,(primer1,chrom,start1,end1,strand1,localGenomeDB,args.snpFreq)))
-            results.append(p.apply_async(checkPrimerForCrossingSNP,(primer2,chrom,start2,end2,strand2,localGenomeDB,args.snpFreq)))
+            results.append(p.apply_async(checkPrimerForCrossingSNP,(primer1,chrom,start1,end1,strand1,args.snpFreq)))
+            results.append(p.apply_async(checkPrimerForCrossingSNP,(primer2,chrom,start2,end2,strand2,args.snpFreq)))
         primersCoveringSNPs=[]
         wholeWork=len(results)
         done=0
         for res in results:
-            primer,result,localGenomeDB=res.get()
+            primer,result=res.get()
             if result:
                 primersCoveringSNPs.append(primer)
             done+=1
@@ -2231,7 +2480,7 @@ else:
     if args.snps:
         print('Analyzing primers for covering high-frequent SNPs...')
         logger.info('Analyzing primers for covering high-frequent SNPs...')
-        primerPairsNonCoveringSNPs,primersCoveringSNPs,localGenomeDB=analyzePrimersForCrossingSNP(primersInfo,args.threads,{},args.genomeVersion,args.nucNumToCheck)
+        primerPairsNonCoveringSNPs,primersCoveringSNPs=analyzePrimersForCrossingSNP(primersInfo,args.threads,args.nucNumToCheck)
         if len(primersCoveringSNPs)>0:
             print(" Removing primer pairs covering high-frequent SNPs...")
             logger.info(" Removing primer pairs covering high-frequent SNPs...")
@@ -2243,11 +2492,11 @@ else:
         else:
             writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_SNPs.xls',primerPairsNonCoveringSNPs)
 
-    # Now we need to group primers into variants of multiplex PCR
-    # multiplexes contains all multiplexes for ditinct joined regions
+    # Now we need to group primers into continuous amplified blocks
+    # amplified block contains all multiplexes for ditinct joined regions
     ## [[joined_regions_1],[joined_region_2],[joined_region_3]...]
-    ### Two different joined regions may be located on one or two chromsomes
-    allRegionsMultiplexes={}
+    ### Two different joined regions may be located on one or two chromosomes
+    allRegionsAmplifiedBlocks={}
     pPolyN=re.compile('(A+|C+|T+|G+)')
     # We go through all chromosomes
     print('Joining primer pairs to amplified blocks...')
@@ -2261,19 +2510,20 @@ else:
     showPercWork(doneWork,wholeWork)
     for res in results:
         chrom,finalShortestPaths=res.get()
-        allRegionsMultiplexes[chrom]=finalShortestPaths
+        allRegionsAmplifiedBlocks[chrom]=finalShortestPaths
         doneWork+=1
         showPercWork(doneWork,wholeWork)
         
-    # We need to show user statistics of amplification blocks
+    # We need to show user statistics of amplified blocks
     totalAmplicons=0
     totalMultiplexVariants=1
     blockNum=0
     blockToChromNum={}
     # One chromosome may contain severel "amplified blocks"
-    for chrom,blocks in sorted(allRegionsMultiplexes.items()):
-        print('\n # Total number of amplified blocks on chromosome',str(chrom)+':',len(allRegionsMultiplexes[chrom]))
-        logger.info(' # Total number of amplified blocks on chromosome '+str(chrom)+': '+str(len(allRegionsMultiplexes[chrom])))
+    # Later we can combine primer pairs from different amplified blocks in different variants
+    for chrom,blocks in sorted(allRegionsAmplifiedBlocks.items()):
+        print('\n # Total number of amplified blocks on chromosome',str(chrom)+':',len(allRegionsAmplifiedBlocks[chrom]))
+        logger.info(' # Total number of amplified blocks on chromosome '+str(chrom)+': '+str(len(allRegionsAmplifiedBlocks[chrom])))
         for i,block in enumerate(blocks):
             blockToChromNum[blockNum]=[chrom,i]
             blockNum+=1
@@ -2287,40 +2537,43 @@ else:
     logger.info(' # Total number of amplicons: '+str(totalAmplicons))
     logger.info(' # Total number of multiplex variants: 10^'+str(int(round(math.log10(totalMultiplexVariants),0))))
 
-    # We need to select several good combinations of amplified blocks
-    combinations=[]
-    for i in range(args.returnVariantsNum):
-        primerPairsNum=0
-        # Make combination of multiplexes
-        comb=[i]*blockNum
-        # Go through all numbers of comb and check that there is enough multiplexes in the block
-        allFit=False
-        while(not allFit):
-            allFit=True
-            for j,c in enumerate(comb):
-                chrom,chromBlockNum=blockToChromNum[j]
-                if c>=len(allRegionsMultiplexes[chrom][chromBlockNum]):
-                    comb[j]-=1
-                    allFit=False
-        combinations.append({})
-        emptyMultiplexes=0
-        blockNum=0
-        for chrom,blocks in sorted(allRegionsMultiplexes.items()):
-            combinations[-1][chrom]={}
-            for block in blocks:
-                multiplex=block[comb[blockNum]]
-                blockNum+=1
-                # Go through items of the multiplex list
-                ## that is like [primers1,primers2,primers3...]
-                ### each primers is primerF_primerR
-                for k in range(len(multiplex)):
-                    # For primersInfo[multiplex[k]] 1st [0] is a primersCoords, 2nd [0] is coordinate of F-primer; 3rd [0] is a start of F-primer
-                    if primersInfo[multiplex[k]][0][0][0] not in combinations[-1][chrom].keys():
-                        combinations[-1][chrom][primersInfo[multiplex[k]][0][0][0]]=multiplex[k].split('_')
-                    primerPairsNum+=1
-        print(' # Number of primer pairs for multiplex variant',i+1,'-',primerPairsNum)
-        logger.info(' # Number of primer pairs for multiplex variant '+str(i+1)+': '+str(primerPairsNum))
-    del(allRegionsMultiplexes)
+    combinations=getBestPrimerCombinations(allRegionsAmplifiedBlocks,
+                                           primersInfo,
+                                           args.returnVariantsNum,
+                                           args.triesToGetCombination,
+                                           totalMultiplexVariants)
+##    # We need to select several good combinations of amplified blocks
+##    combinations=[]
+##    for i in range(args.returnVariantsNum):
+##        primerPairsNum=0
+##        # Make combination of multiplexes
+##        comb=[i]*blockNum
+##        # Go through all numbers of comb and check that there is enough multiplexes in the block
+##        allFit=False
+##        while(not allFit):
+##            allFit=True
+##            for j,c in enumerate(comb):
+##                chrom,chromBlockNum=blockToChromNum[j]
+##                if c>=len(allRegionsAmplifiedBlocks[chrom][chromBlockNum]):
+##                    comb[j]-=1
+##                    allFit=False
+##        combinations.append({})
+##        emptyMultiplexes=0
+##        blockNum=0
+##        for chrom,blocks in sorted(allRegionsAmplifiedBlocks.items()):
+##            combinations[-1][chrom]={}
+##            for block in blocks:
+##                multiplex=block[comb[blockNum]]
+##                blockNum+=1
+##                # Go through items of the multiplex list
+##                ## that is like [primers1,primers2,primers3...]
+##                ### each primers is primerF_primerR
+##                for k in range(len(multiplex)):
+##                    # For primersInfo[multiplex[k]] 1st [0] is a primersCoords, 2nd [0] is coordinate of F-primer; 3rd [0] is a start of F-primer
+##                    if primersInfo[multiplex[k]][0][0][0] not in combinations[-1][chrom].keys():
+##                        combinations[-1][chrom][primersInfo[multiplex[k]][0][0][0]]=multiplex[k].split('_')
+##                    primerPairsNum+=1
+##    del(allRegionsAmplifiedBlocks)
 
     print('Writing to output...')
     logger.info('Writing to output...')
@@ -2605,7 +2858,7 @@ else:
             if args.snps:
                 print('Analyzing external primers for covering high-frequent SNPs...')
                 logger.info('Analyzing external primers for covering high-frequent SNPs...')
-                primerPairsNonCoveringSNPs,primersCoveringSNPs,localGenomeDB=analyzePrimersForCrossingSNP(extPrimersInfo,args.threads,localGenomeDB,args.genomeVersion,args.nucNumToCheck)
+                primerPairsNonCoveringSNPs,primersCoveringSNPs=analyzePrimersForCrossingSNP(extPrimersInfo,args.threads,args.nucNumToCheck)
                 print("\n # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
                 logger.info(" # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
             # Now we need to remove unspecific primer pairs
