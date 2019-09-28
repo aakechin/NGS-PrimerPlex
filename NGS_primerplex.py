@@ -1232,7 +1232,7 @@ def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,
     elif chrom=='24':
         chrom='Y'
     snps=[]
-    for snp in vcf.fetch(chrom,start-1,end+1):
+    for snp in vcf.fetch(chrom,start-1,end):
         if float(snp.info['CAF'][0])<1-freq:
             snps.append(snp)
     if len(snps)>0:
@@ -1513,8 +1513,8 @@ def getBestPrimerCombinations(allRegionsAmplifiedBlocks,
             weight=weight['weight']
             g.add_edge(node1,node2,weight=weight*randomFloat)
         showPercWork(shortestPathFindRepeats,triesToGetCombination-1)
-    print('\nTotal number of running all_shortest_paths:',shortestPathFindRepeats)
-    logger.info('Total number of running all_shortest_paths: '+str(shortestPathFindRepeats))
+    print('\nTotal number of all_shortest_paths runs:',shortestPathFindRepeats)
+    logger.info('Total number of all_shortest_paths runs: '+str(shortestPathFindRepeats))
     print('Total number of combinations considered:',combNum)
     logger.info('Total number of combinations considered: '+str(combNum))
     combinations=[]
@@ -2480,7 +2480,10 @@ else:
     if args.snps:
         print('Analyzing primers for covering high-frequent SNPs...')
         logger.info('Analyzing primers for covering high-frequent SNPs...')
-        primerPairsNonCoveringSNPs,primersCoveringSNPs=analyzePrimersForCrossingSNP(primersInfo,args.threads,args.nucNumToCheck)
+        primerPairsNonCoveringSNPs,primersCoveringSNPs=analyzePrimersForCrossingSNP(primersInfo,
+                                                                                    args.threads,
+                                                                                    args.dbSnpVcfFile,
+                                                                                    args.nucNumToCheck)
         if len(primersCoveringSNPs)>0:
             print(" Removing primer pairs covering high-frequent SNPs...")
             logger.info(" Removing primer pairs covering high-frequent SNPs...")
@@ -2532,49 +2535,20 @@ else:
                 totalAmplicons+=len(mult)
     print(' # Total number of amplified blocks:',blockNum)
     print(' # Total number of amplicons:',totalAmplicons)
-    print(' # Total number of multiplex variants: 10^'+str(int(round(math.log10(totalMultiplexVariants),0))))
     logger.info(' # Total number of amplified blocks: '+str(blockNum))
     logger.info(' # Total number of amplicons: '+str(totalAmplicons))
-    logger.info(' # Total number of multiplex variants: 10^'+str(int(round(math.log10(totalMultiplexVariants),0))))
-
+    if totalMultiplexVariants>10**6:
+        print(' # Total number of multiplex variants: 10^'+str(int(round(math.log10(totalMultiplexVariants),0))))
+        logger.info(' # Total number of multiplex variants: 10^'+str(int(round(math.log10(totalMultiplexVariants),0))))
+    else:
+        print(' # Total number of multiplex variants: '+str(totalMultiplexVariants))
+        logger.info(' # Total number of multiplex variants: '+str(totalMultiplexVariants))
+    # Get best combinations of amplified block variants
     combinations=getBestPrimerCombinations(allRegionsAmplifiedBlocks,
                                            primersInfo,
                                            args.returnVariantsNum,
                                            args.triesToGetCombination,
                                            totalMultiplexVariants)
-##    # We need to select several good combinations of amplified blocks
-##    combinations=[]
-##    for i in range(args.returnVariantsNum):
-##        primerPairsNum=0
-##        # Make combination of multiplexes
-##        comb=[i]*blockNum
-##        # Go through all numbers of comb and check that there is enough multiplexes in the block
-##        allFit=False
-##        while(not allFit):
-##            allFit=True
-##            for j,c in enumerate(comb):
-##                chrom,chromBlockNum=blockToChromNum[j]
-##                if c>=len(allRegionsAmplifiedBlocks[chrom][chromBlockNum]):
-##                    comb[j]-=1
-##                    allFit=False
-##        combinations.append({})
-##        emptyMultiplexes=0
-##        blockNum=0
-##        for chrom,blocks in sorted(allRegionsAmplifiedBlocks.items()):
-##            combinations[-1][chrom]={}
-##            for block in blocks:
-##                multiplex=block[comb[blockNum]]
-##                blockNum+=1
-##                # Go through items of the multiplex list
-##                ## that is like [primers1,primers2,primers3...]
-##                ### each primers is primerF_primerR
-##                for k in range(len(multiplex)):
-##                    # For primersInfo[multiplex[k]] 1st [0] is a primersCoords, 2nd [0] is coordinate of F-primer; 3rd [0] is a start of F-primer
-##                    if primersInfo[multiplex[k]][0][0][0] not in combinations[-1][chrom].keys():
-##                        combinations[-1][chrom][primersInfo[multiplex[k]][0][0][0]]=multiplex[k].split('_')
-##                    primerPairsNum+=1
-##    del(allRegionsAmplifiedBlocks)
-
     print('Writing to output...')
     logger.info('Writing to output...')
     colsWidth1=[5,30,30,15,6,12,12,13,12,12,
@@ -2858,7 +2832,10 @@ else:
             if args.snps:
                 print('Analyzing external primers for covering high-frequent SNPs...')
                 logger.info('Analyzing external primers for covering high-frequent SNPs...')
-                primerPairsNonCoveringSNPs,primersCoveringSNPs=analyzePrimersForCrossingSNP(extPrimersInfo,args.threads,args.nucNumToCheck)
+                primerPairsNonCoveringSNPs,primersCoveringSNPs=analyzePrimersForCrossingSNP(extPrimersInfo,
+                                                                                            args.threads,
+                                                                                            args.dbSnpVcfFile,
+                                                                                            args.nucNumToCheck)
                 print("\n # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
                 logger.info(" # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
             # Now we need to remove unspecific primer pairs
