@@ -5,11 +5,13 @@ import argparse
 import re
 import os
 import sys
-import primer3
 import math
+import random
+import primer3
 import logging
 import pysam
 import xlrd
+import numpy
 from copy import deepcopy
 from multiprocessing.pool import ThreadPool
 from Bio import SeqIO,Seq,pairwise2
@@ -20,9 +22,7 @@ import networkx as nx
 import networkx.algorithms.clique as clique
 import networkx.algorithms.shortest_paths.weighted as weighted_shortest_paths
 from itertools import islice
-import myvariant
 from collections import Counter
-import random
 
 global thisDir
 thisDir=os.path.dirname(os.path.realpath(__file__))+'/'
@@ -194,6 +194,11 @@ def createPrimer3_parameters(pointRegions,args,species='human',
     primerTags['PRIMER_MAX_SELF_ANY_TH']=args.maxPrimerComplAnyTh
     primerTags['PRIMER_MAX_HAIRPIN_TH']=args.maxPrimerHairpinTh
     primerTags['PRIMER_NUM_RETURN']=args.primernum1
+    if designedInternalPrimers==None:
+        if args.leftAdapter:
+            primerTags['PRIMER_LEFT_ADAPTER']=args.leftAdapter.upper()
+        if args.rightAdapter:
+            primerTags['PRIMER_RIGHT_ADAPTER']=args.rightAdapter.upper()
 ##    primerTags['PRIMER_PAIR_MAX_COMPL_ANY_TH']=args.maxPrimerComplAnyTh ## Use of this value lead to mistake in primer3-py module. It begins to incorrectly calculate Tm
 ##    primerTags['PRIMER_PAIR_MAX_COMPL_END_TH']=args.maxPrimerComplEndTh ## Use of this value lead to mistake in primer3-py module. It begins to incorrectly calculate Tm
     # If we are going to design external primers for already created internal primers
@@ -336,7 +341,11 @@ def createPrimer3_parameters(pointRegions,args,species='human',
                 prevEnd=end
         return(primer3Params)
 
-def constructInternalPrimers(primer3Params,regionNameToChrom,args,regionsCoords=None,allRegions=None,primersInfo=None,primersInfoByChrom=None,amplNames=None,primersToAmplNames=None):
+def constructInternalPrimers(primer3Params,regionNameToChrom,
+                             args,regionsCoords=None,
+                             allRegions=None,primersInfo=None,
+                             primersInfoByChrom=None,
+                             amplNames=None,primersToAmplNames=None):
     # chrom is string
     p=ThreadPool(args.threads)
     # Dictionary for storing primers' info
@@ -359,7 +368,7 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,args,regionsCoords=
     wholeWork=len(primer3Params.keys())
     for i,(regionName,inputParams) in enumerate(primer3Params.items()):
         for inputParam in inputParams:
-            results.append(p.apply_async(runPrimer3,(regionName,inputParam,False,args.autoAdjust)))
+            results.append(p.apply_async(runPrimer3,(regionName,inputParam,False,args)))
         showPercWork(i+1,wholeWork)
     print()
     doneWork=0
@@ -479,7 +488,8 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,args,regionsCoords=
     logger.info(' # Total number of different constructed primers: '+str(totalDifPrimersNum))
     return(primersInfo,primersInfoByChrom,amplNames,primersToAmplNames,regionsCoords,regionNameToChrom,allRegions)    
 
-def runPrimer3(regionName,inputParams,extPrimer,autoAdjust=False):
+def runPrimer3(regionName,inputParams,extPrimer,args):
+    autoAdjust=args.autoAdjust
     extPrimerTryNum=0
     seqTags,primerTags=inputParams
     # Variable that stores, if we tried to set less stringent parameters for:
@@ -526,13 +536,75 @@ def runPrimer3(regionName,inputParams,extPrimer,autoAdjust=False):
             i=0
             leftEnd3_rc=str(Seq.Seq(primers[2*i][-4:]).reverse_complement())
             rightEnd3_rc=str(Seq.Seq(primers[2*i+1][-4:]).reverse_complement())
-            leftHairpin=primer3.calcHairpin(primers[2*i]).dg/1000
-            rightHairpin=primer3.calcHairpin(primers[2*i+1]).dg/1000
+            if 'PRIMER_LEFT_ADAPTER' in primerTags.keys():
+                leftPrimer=primerTags['PRIMER_LEFT_ADAPTER']+primers[2*i]
+            else:
+                leftPrimer=primers[2*i]
+            if 'PRIMER_RIGHT_ADAPTER' in primerTags.keys():
+                rightPrimer=primerTags['PRIMER_RIGHT_ADAPTER']+primers[2*i+1]
+            else:
+                rightPrimer=primers[2*i]
+            leftHairpin=primer3.calcHairpin(leftPrimer,
+                                            mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                            dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                            dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                            dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
+            rightHairpin=primer3.calcHairpin(rightPrimer,
+                                             mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                             dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                             dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                             dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
+            leftHomodimer=primer3.calcHomodimer(leftPrimer,
+                                                mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
+            rightHomodimer=primer3.calcHomodimer(rightPrimer,
+                                                 mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                 dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                 dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                 dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
+            heterodimer=primer3.calcHeterodimer(leftPrimer,rightPrimer,
+                                                mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
+            leftHairpinEnd3=calcThreeStrikeEndHairpin(leftPrimer,
+                                                      mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                      dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                      dntp_conc=primerTags['PRIMER_DNTP_CONC'],
+                                                      dna_conc=primerTags['PRIMER_DNA_CONC'])
+            rightHairpinEnd3=calcThreeStrikeEndHairpin(rightPrimer,
+                                                      mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                      dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                      dntp_conc=primerTags['PRIMER_DNTP_CONC'],
+                                                      dna_conc=primerTags['PRIMER_DNA_CONC'])
+            leftHomodimerEnd3=calcThreeStrikeEndDimer(leftPrimer,leftPrimer,
+                                                      mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                      dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                      dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                      dntp_conc=primerTags['PRIMER_DNTP_CONC'])
+            rightHomodimerEnd3=calcThreeStrikeEndDimer(rightPrimer,rightPrimer,
+                                                       mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                       dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                       dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                       dntp_conc=primerTags['PRIMER_DNTP_CONC'])
+            heterodimerEnd3=calcThreeStrikeEndDimer(leftPrimer,rightPrimer,
+                                                    mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                    dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                    dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                    dntp_conc=primerTags['PRIMER_DNTP_CONC'])
             while(i<int(len(primers)/2) and len(primers)>0):
                 if (primers[2*i][-5:].count('G')+primers[2*i][-5:].count('C')<minEndGC
                     or primers[2*i+1][-5:].count('G')+primers[2*i+1][-5:].count('C')<minEndGC
-                    or (leftEnd3_rc in primers[2*i][1:-4-3] and leftHairpin<-2)
-                    or (rightEnd3_rc in primers[2*i+1][1:-4-3] and rightHairpin<-2)):
+                    or leftHairpinEnd3<-2
+                    or rightHairpinEnd3<-2
+                    or leftHomodimer<args.minMultDimerdG2
+                    or rightHomodimer<args.minMultDimerdG2
+                    or heterodimer<args.minMultDimerdG2
+                    or leftHomodimerEnd3<args.minMultDimerdG1
+                    or rightHomodimerEnd3<args.minMultDimerdG1
+                    or heterodimerEnd3<args.minMultDimerdG1):
                     primers.pop(2*i); primers.pop(2*i)
                     primersPoses.pop(2*i); primersPoses.pop(2*i)
                     primersTms.pop(2*i); primersTms.pop(2*i)
@@ -560,11 +632,36 @@ def runPrimer3(regionName,inputParams,extPrimer,autoAdjust=False):
                 primersProductSizes.append(0)
                 primersProductPenalty.append(out['PRIMER_LEFT_'+str(i)+'_PENALTY'])
             i=0
+            if 'PRIMER_LEFT_ADAPTER' in primerTags.keys():
+                leftPrimer=primerTags['PRIMER_LEFT_ADAPTER']+primers[2*i]
+            else:
+                leftPrimer=primers[2*i]
             leftEnd3_rc=str(Seq.Seq(primers[2*i][-4:]).reverse_complement())
-            leftHairpin=primer3.calcHairpin(primers[2*i]).dg/1000
+            leftHairpin=primer3.calcHairpin(leftPrimer,
+                                            mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                            dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                            dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                            dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
+            leftHomodimer=primer3.calcHomodimer(leftPrimer,
+                                                mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
+            leftHairpinEnd3=calcThreeStrikeEndHairpin(leftPrimer,
+                                                      mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                      dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                      dntp_conc=primerTags['PRIMER_DNTP_CONC'],
+                                                      dna_conc=primerTags['PRIMER_DNA_CONC'])
+            leftHomodimerEnd3=calcThreeStrikeEndDimer(leftPrimer,leftPrimer,
+                                                      mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                      dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                      dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                      dntp_conc=primerTags['PRIMER_DNTP_CONC'])
             while(i<int(len(primers)/2) and len(primers)>0):
                 if (primers[2*i][-5:].count('G')+primers[2*i][-5:].count('C')<minEndGC
-                    or (leftEnd3_rc in primers[2*i][1:-4-3] and leftHairpin<-2)):
+                    or leftHairpinEnd3<-2
+                    or leftHomodimer<args.minMultDimerdG2
+                    or leftHomodimerEnd3<args.minMultDimerdG1):
                     primers.pop(2*i); primers.pop(2*i)
                     primersPoses.pop(2*i); primersPoses.pop(2*i)
                     primersTms.pop(2*i); primersTms.pop(2*i)
@@ -592,11 +689,36 @@ def runPrimer3(regionName,inputParams,extPrimer,autoAdjust=False):
                 primersProductSizes.append(0)
                 primersProductPenalty.append(out['PRIMER_RIGHT_'+str(i)+'_PENALTY'])
             i=0
+            if 'PRIMER_RIGHT_ADAPTER' in primerTags.keys():
+                rightPrimer=primerTags['PRIMER_RIGHT_ADAPTER']+primers[2*i+1]
+            else:
+                rightPrimer=primers[2*i]
             rightEnd3_rc=str(Seq.Seq(primers[2*i+1][-4:]).reverse_complement())
-            rightHairpin=primer3.calcHairpin(primers[2*i+1]).dg/1000
+            rightHairpin=primer3.calcHairpin(rightPrimer,
+                                             mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                             dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                             dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                             dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
+            rightHomodimer=primer3.calcHomodimer(rightPrimer,
+                                                 mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                 dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                 dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                 dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
+            rightHairpinEnd3=calcThreeStrikeEndHairpin(rightPrimer,
+                                                      mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                      dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                      dntp_conc=primerTags['PRIMER_DNTP_CONC'],
+                                                      dna_conc=primerTags['PRIMER_DNA_CONC'])
+            rightHomodimerEnd3=calcThreeStrikeEndDimer(rightPrimer,rightPrimer,
+                                                       mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                       dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                       dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                       dntp_conc=primerTags['PRIMER_DNTP_CONC'])
             while(i<int(len(primers)/2) and len(primers)>0):
                 if (primers[2*i+1][-5:].count('G')+primers[2*i+1][-5:].count('C')<minEndGC
-                    or (rightEnd3_rc in primers[2*i+1][1:-4-3] and rightHairpin<-2)):
+                    or rightHairpinEnd3<-2
+                    or rightHomodimer<args.minMultDimerdG2
+                    or rightHomodimerEnd3<args.minMultDimerdG1):
                     primers.pop(2*i); primers.pop(2*i)
                     primersPoses.pop(2*i); primersPoses.pop(2*i)
                     primersTms.pop(2*i); primersTms.pop(2*i)
@@ -738,6 +860,9 @@ def getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom):
     uncoveredRegions=deepcopy(allRegions)
     for chrom,coords in primersInfoByChrom.items():
         coordToRegionName={}
+        # If current primer pair does not cover any of target regions
+        if str(chrom) not in allRegions.keys():
+            continue
         for regionCoords in allRegions[str(chrom)].values():
             coordToRegionName[regionCoords[1]]=regionCoords[3]
         for primerPair,coord in coords.items():
@@ -820,6 +945,40 @@ def getRegionsUncoveredByDraftExternalPrimers(primersInfo,primersInfoByChrom,out
                     amplToChrom[parameters[2]]=str(chrom)
                     amplToStartCoord[parameters[2]]=chrTargetSeqStart
     return(outputExternalPrimers,uncoveredInternalPrimers,amplToChrom,amplToStartCoord)
+
+##def writeUnspecificPrimers(primersInfo,rFile,unspecificPrimers):
+##    # Write all primers and for primers ]
+##    # which give unspecific primers we write primer
+##    # with which it form this product
+##    wbw=xls.Workbook(rFile)
+##    if external:
+##        wsw1=wbw.add_worksheet('Draft_Internal_Primers')
+##        wsw2=wbw.add_worksheet('Draft_External_Primers')
+##    else:
+##        wsw2=wbw.add_worksheet('Draft_Internal_Primers')
+##        wsw1=wbw.add_worksheet('Draft_External_Primers')
+##    wsw1.write_row(0,0,['Primer_Pair','Left_Primer_Start','Left_Primer_Length',
+##                        'Right_Primer_End','Right_Primer_Length',
+##                        'Left_Primer_Tm','Right_Primer_Tm',
+##                        'Amplicon_Length','Primers_Score','Chrom'])
+##    rowNum=1
+##    for row in oldRows:
+##        wsw1.write_row(rowNum,0,row)
+##        rowNum+=1
+##    wsw2.write_row(0,0,['Primer_Pair','Left_Primer_Start','Left_Primer_Length',
+##                       'Right_Primer_End','Right_Primer_Length',
+##                       'Left_Primer_Tm','Right_Primer_Tm',
+##                       'Amplicon_Length','Primers_Score','Chrom'])
+##    rowNum=1
+##    for primerPair,info in primersInfo.items():
+##        if (goodPrimers==None or
+##            goodPrimers and primerPair in goodPrimers):
+##            wsw2.write_row(rowNum,0,[primerPair,info[0][0][0],info[0][0][1],
+##                                    info[0][1][0],info[0][1][1],
+##                                    info[1][0],info[1][1],
+##                                    info[2],info[3],info[4]])
+##            rowNum+=1
+##    wbw.close()
 
 def checkThisPrimerPairForCoveringOtherInputRegions(chromPointRegions,amplBlockStart,amplBlockEnd):
     coveredRegions=[]
@@ -1060,7 +1219,13 @@ def readBwaFile(read,maxPrimerNonspec,refFa,primersInfo=None):
         elif int(pos)<0:
             regStrand=-1
         if (strand>0 and int(pos)<0) or (strand<0 and int(pos)>0):
-            seq=str(Seq.Seq(seq).reverse_complement())
+            try:
+                seq=str(Seq.Seq(seq).reverse_complement())
+            except ValueError:
+                print('ERROR! Unknown DNA symbols in the sequence extracted from the reference genome!')
+                print(seq)
+                print(chrom,pos,regionLen)
+                exit(49)
         # If there is some insertions or deletion in found region
         if 'I' in cigar or 'D' in cigar:
             # We need to align its sequence with primer sequence
@@ -1397,39 +1562,55 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
 
 def getBestPrimerCombinations(allRegionsAmplifiedBlocks,
                               primersInfo,
+                              unspecificPrimers,
                               returnVarNum=1,
                               triesToGetCombination=1000,
                               totalMultiplexVariants=1000):
+    print(' Searching for interactions between the amplified blocks...')
+    logger.info(' Searching for interactions between the amplified blocks...')
     # Save interaction numbers for all possible pairs of blocks
     allBlockPairValues={}
+    # Total number of blocks
+    totalBlockNum=0
+    # Maximal number of block variants
+    maxBlockVarNum=0
     # Go through all blocks
     # Go through all chromosomes
+    showPercWork(0,len(allRegionsAmplifiedBlocks.keys()))
     for i,chrom1 in enumerate(sorted(allRegionsAmplifiedBlocks.keys())):
+        totalBlockNum+=len(allRegionsAmplifiedBlocks[chrom1])
         # Go through all blocks of current chromosome
         for k,block1 in enumerate(allRegionsAmplifiedBlocks[chrom1]):
+            if len(block1)>maxBlockVarNum:
+                maxBlockVarNum=len(block1)
             # Go through all chromosomes
             for j,chrom2 in enumerate(sorted(allRegionsAmplifiedBlocks.keys())):
                 # If chrom2 is sorted earlier than chrom1, skip chrom2
                 if j<i:
                     continue
                 # If it is the last block of chrom1, we skip this chromosome
-                if (k==len(allRegionsAmplifiedBlocks[chrom1])-1 and
-                    chrom1==chrom2):
-                    continue
-                # If it the same chromosome
+                # Remove variant of the last block of chrom1
+                # Because we changed functions of calculating interNum
+                # and now we need to compare each block with itself
+##                if (k==len(allRegionsAmplifiedBlocks[chrom1])-1 and
+##                    chrom1==chrom2):
+##                    continue
+                # If it is the same chromosome
                 else:
                     if chrom1==chrom2:
-                        startNum=k+1
+                        startNum=k
                     else:
                         startNum=0
                     # Go through all blocks of the 2nd blocks to compare
                     for z,block2 in enumerate(allRegionsAmplifiedBlocks[chrom2][startNum:]):
+                        if len(block2)>maxBlockVarNum:
+                            maxBlockVarNum=len(block2)
                         # Go through all variants of current block1
                         for q,block1_var in enumerate(block1):
                             # Go through all variants of current block2
                             for w,block2_var in enumerate(block2):
                                 # Get number of interacting primers
-                                interNum=comparePrimersOfTwoBlocks(block1_var,block2_var)
+                                interNum=comparePrimersOfTwoBlocks(block1_var,block2_var,unspecificPrimers)
                                 block_ID1='_'.join([str(chrom1),str(k),str(q)])
                                 block_ID2='_'.join([str(chrom2),str(startNum+z),str(w)])
                                 if chrom1 not in allBlockPairValues.keys():
@@ -1446,96 +1627,136 @@ def getBestPrimerCombinations(allRegionsAmplifiedBlocks,
                                 if w not in allBlockPairValues[chrom2][startNum+z].keys():
                                     allBlockPairValues[chrom2][startNum+z][w]={}
                                 allBlockPairValues[chrom2][startNum+z][w][block_ID1]=interNum
-    # Create graph with all blocks and their variants
-    import networkx as nx
-    g=nx.Graph()
+        showPercWork(i+1,len(allRegionsAmplifiedBlocks.keys()))
+    print('\n Searching for the best primer pair combinations...')
+    logger.info(' Searching for the best primer pair combinations...')
+    # Create matrix of sorted values for each of block variants:
+    # [[block1-best,block2-best,block3-best,...blockN-best]
+    #  [block1-next,block2-next,block3-next,...blockN-next]
+    #   ...
+    #  [block1-next,block2-next,block3-next,...blockN-next]]
+    blockVarValues=numpy.full((maxBlockVarNum,
+                               totalBlockNum),None)
+    # Create matrix of block variant names sorted by values:
+    # [[block1-best,block2-best,block3-best,...blockN-best]
+    #  [block1-next,block2-next,block3-next,...blockN-next]
+    #   ...
+    #  [block1-next,block2-next,block3-next,...blockN-next]]
+    blockVarNames=numpy.full((maxBlockVarNum,
+                              totalBlockNum),None)
+    # Stores positional number of current block among all blocks
+    currentBlockNum=0
     # Go through all chromosomes
-    for i,chrom in enumerate(sorted(allRegionsAmplifiedBlocks.keys())):
+    for chrom in sorted(allRegionsAmplifiedBlocks.keys()):
         # Go through all blocks of current chromosome
         for k,block in enumerate(allRegionsAmplifiedBlocks[chrom]):
-            # If it the last block of the current chromosome,
-            # we need to compare it with the 1st block of the next chromosome
-            if (i!=len(allRegionsAmplifiedBlocks.keys())-1 and
-                k==len(allRegionsAmplifiedBlocks[chrom])-1):
-                chrom2=sorted(allRegionsAmplifiedBlocks.keys())[i+1]
-                blockNum2=0
-            else:
-                chrom2=chrom
-                blockNum2=k+1
-            # Go through all variants of the current block
-            for q,blockVarNum1 in enumerate(allBlockPairValues[chrom][k].keys()):
-                block_ID1='_'.join([str(chrom),str(k),str(blockVarNum1)])
-                # if it is the 1st chromosome in the list and the 1st block
-                if i==0 and k==0:
-                    # Create edge from start to the 1st block variants
-                    g.add_edge('start',block_ID1,weight=0)
-                # If it the last chromosome and the last block
-                if (i==len(allRegionsAmplifiedBlocks.keys())-1 and
-                    k==len(allRegionsAmplifiedBlocks[chrom])-1):
-                    # And add edge from this block to end
-                    g.add_edge(block_ID1,'end',weight=0)
-                    continue
-                nodeValue1=sum(allBlockPairValues[chrom][k][blockVarNum1].values())
-                # Go through all variants only of the next block
-                for w,blockVarNum2 in enumerate(allBlockPairValues[chrom2][blockNum2].keys()):
-                    block_ID2='_'.join([str(chrom2),str(blockNum2),str(blockVarNum2)])
-                    nodeValue2=sum(allBlockPairValues[chrom2][blockNum2][blockVarNum2].values())
-                    g.add_edge(block_ID1,block_ID2,weight=1000/(nodeValue1+nodeValue2))
-    combNum=0
-    shortestPathFindRepeats=0
-    allPaths=[]
-    pathValues={}
-    print('Searching for the best primer pair combinations...')
-    logger.info('Searching for the best primer pair combinations...')
-    while(shortestPathFindRepeats<triesToGetCombination and combNum<totalMultiplexVariants):
-        for combinationPath in nx.all_shortest_paths(g,
-                                                     'start',
-                                                     'end',
-                                                     weight='weight'):
-            value=getEdgesSumOfWeight(g,combinationPath)
-            interNums=[]
-            for blockVarNum in combinationPath:
-                if blockVarNum not in ['start','end']:
-                    chrom,blockNum,blockVarNum=blockVarNum.split('_')
-                    interNums.append(sum(allBlockPairValues[int(chrom)][int(blockNum)][int(blockVarNum)].values()))
-            if combinationPath not in allPaths:
-                allPaths.append(combinationPath)
-                pathValues[len(allPaths)-1]=(value,sum(interNums))
-                combNum+=1
-        shortestPathFindRepeats+=1
-        edgelist=g.edges(data=True)
-        random.shuffle(edgelist)
-        import networkx as nx
-        g=nx.Graph()
-        randomFloat=random.randint(1,10)/4
-        for edge in edgelist:
-            node1,node2,weight=edge
-            weight=weight['weight']
-            g.add_edge(node1,node2,weight=weight*randomFloat)
-        showPercWork(shortestPathFindRepeats,triesToGetCombination-1)
-    print('\nTotal number of all_shortest_paths runs:',shortestPathFindRepeats)
-    logger.info('Total number of all_shortest_paths runs: '+str(shortestPathFindRepeats))
-    print('Total number of combinations considered:',combNum)
-    logger.info('Total number of combinations considered: '+str(combNum))
-    combinations=[]
-    for i,combinationPathNum in enumerate(sorted(pathValues.keys(),
-                                                 key=lambda combinationPathNum:pathValues[combinationPathNum][1])):
-        primerPairNum=0
-        combinations.append({})
-        for block_ID in allPaths[combinationPathNum]:
-            if block_ID not in ['start','end']:
-                chrom,blockNum,blockVarNum=map(int,block_ID.split('_'))
-                if chrom not in combinations[-1].keys():
-                    combinations[-1][chrom]={}
-                blockVar=allRegionsAmplifiedBlocks[chrom][blockNum][blockVarNum]
-                for primerPair in blockVar:
-                    combinations[-1][chrom][primersInfo[primerPair][0][0][0]]=primerPair.split('_')
-                    primerPairNum+=1
-        print(' # Number of primer pairs for multiplex variant',i+1,'-',primerPairNum)
-        logger.info(' # Number of primer pairs for multiplex variant '+str(i+1)+': '+str(primerPairNum))
-        if i+1>=returnVarNum:
+            for j,blockVarNum in enumerate(sorted(allBlockPairValues[chrom][k],
+                                                  key=lambda blockVarNum:sum(allBlockPairValues[chrom][k][blockVarNum].values()))):
+                # Save value for current block variant
+                blockVarValues[j,currentBlockNum]=sum(allBlockPairValues[chrom][k][blockVarNum].values())
+                # Create block variant name
+                block_ID='_'.join([str(chrom),str(k),str(blockVarNum)])
+                # Save name of current block into the matrix
+                blockVarNames[j,currentBlockNum]=block_ID
+            currentBlockNum+=1
+    # Stores all best combinations
+    combinations={}
+    # Calculate score for the best variant
+    score=sum(blockVarValues[0,])
+    # Create first best combination
+    combinations[tuple([0]*totalBlockNum)]=score
+    # Stores number of created combinations
+    totalCombNum=0
+    # Create combinations while we haven't created enough number
+    # Or while it wasn't interrupted in cycle
+    # At the 1st step we create two time more combinations
+    while (totalCombNum<min(triesToGetCombination,totalMultiplexVariants)):
+        # Stores all possible next combinations with sum values
+        nextPossibleCombinations={}
+        # Go through all created combinations and find block
+        # with minimal difference between current and the next variant
+        for combination,score in combinations.items():
+            # Go through all blocks
+            for i,blockVarNumInSorted in enumerate(combination):
+                # If current block variant number is not None
+                # i.e. it exists
+                if (blockVarValues.shape[0]>=blockVarNumInSorted+2 and
+                    blockVarValues[blockVarNumInSorted+1,i]!=None):
+                    # Change only one block variant number
+                    newCombination=combination[:i]+tuple([combination[i]+1])+combination[i+1:]
+                    if tuple(newCombination) not in combinations.keys():
+                        diff=blockVarValues[blockVarNumInSorted+1,i]-blockVarValues[blockVarNumInSorted,i]
+                        nextPossibleCombinations[tuple(newCombination)]=score+diff
+        # If there is no next possible combinations, interrupt cycles
+        if len(nextPossibleCombinations)==0:
             break
-    return(combinations)
+        # Go through all saved possible combinations and take with minimal score
+        minScore=min(nextPossibleCombinations.values())
+        for combination,value in sorted(nextPossibleCombinations.items(),
+                                        key=lambda item:item[1]):
+            if value>minScore:
+                break
+            # Save combinations with minimal scores
+            combinations[combination]=value
+        totalCombNum=len(combinations.keys())
+        showPercWork(totalCombNum,min(triesToGetCombination,totalMultiplexVariants))
+    print()
+    print(' # Total number of combinations selected for the subsequent deeper analysis:',len(combinations))
+    logger.info(' # Total number of combinations selected for the subsequent deeper analysis: '+str(len(combinations)))
+    print(' # Minimal score of the combinations before recalculation:',min(combinations.values()))
+    logger.info(' # Minimal score of the combinations analyzed before recalculation: '+str(min(combinations.values())))
+    print(' # Maximal score of the combinations analyzed before recalculation:',max(combinations.values()))
+    logger.info(' # Maximal score of the combinations analyzed before recalculation: '+str(max(combinations.values())))
+    print(' Recalculating scores for the selected combinations and taking best ones...')
+    logger.info(' Recalculating scores for the selected combinations and taking best ones...')
+    # At the 2nd step we take only best combinations
+    # but by the more complicated comparison
+    # Previously we considered interactions with primers from all variants
+    # Now we will consider only interactions with primers from current combination
+    # This will give more precise evaluation of combination score
+    # Go through all combinations and their scores
+    for combNum,(combination,score) in enumerate(combinations.items()):
+        # combination is a tuple of block variant numbers in sorted list
+        # We need to count interactions between all primers of these block variants
+        # Stores list of all blocks of current combination in the format
+        # that is necessary for comparePrimersOfTwoBlocks()
+        combAllBlocks=[]
+        for i,blockVarNameNum in enumerate(combination):
+            chrom,blockNum,blockVarNum=blockVarNames[blockVarNameNum,i].split('_')
+            blockPrimers=allRegionsAmplifiedBlocks[int(chrom)][int(blockNum)][int(blockVarNum)]
+            combAllBlocks.append(blockPrimers)
+        newScore=0
+        # Count interactions between all primers of all blocks
+        for i,block1 in enumerate(combAllBlocks):
+            for block2 in combAllBlocks[i+1:]:
+                newScore+=comparePrimersOfTwoBlocks(block1,block2,unspecificPrimers)
+        combinations[combination]=newScore
+        showPercWork(combNum+1,len(combinations))
+    print('\n # Minimal score of the combinations analyzed:',min(combinations.values()))
+    logger.info(' # Minimal score of the combinations analyzed: '+str(min(combinations.values())))
+    print(' # Maximal score of the combinations analyzed:',max(combinations.values()))
+    logger.info(' # Maximal score of the combinations analyzed: '+str(max(combinations.values())))
+    # Select necessary number of combinations
+    # Contains combinations in the necessary format for the subsequent steps
+    outCombinations=[]
+    for i,combination in enumerate(sorted(combinations.keys(),
+                                          key=lambda key:combinations[key])):
+        if i+1<=returnVarNum:
+            outCombinations.append({})
+        else:
+            break
+        primerPairNum=0
+        for j,blockVarNameNum in enumerate(combination):
+            chrom,blockNum,blockVarNum=blockVarNames[blockVarNameNum,j].split('_')
+            blockPrimers=allRegionsAmplifiedBlocks[int(chrom)][int(blockNum)][int(blockVarNum)]
+            if chrom not in outCombinations[-1].keys():
+                outCombinations[-1][chrom]={}
+            for primerPair in blockPrimers:
+                outCombinations[-1][chrom][primersInfo[primerPair][0][0][0]]=primerPair.split('_')
+                primerPairNum+=1
+        print(' # Number of primer pairs and score for the multiplex variant',i+1,'-',primerPairNum,'('+str(combinations[combination])+')')
+        logger.info(' # Number of primer pairs and score for the multiplex variant '+str(i+1)+': '+str(primerPairNum)+' ('+str(combinations[combination])+')')
+    return(outCombinations)
 
 def getEdgesSumOfWeight(g,nodes):
     sumWeight=0
@@ -1544,17 +1765,19 @@ def getEdgesSumOfWeight(g,nodes):
     return(sumWeight)
 
 # Returns number of interactions for two blocks
-def comparePrimersOfTwoBlocks(block1,block2):
+def comparePrimersOfTwoBlocks(block1,block2,unspecificPrimers):
     interactions=0
     for primerPair1 in block1:
         for primerPair2 in block2:
-            allPrimers=[]
-            allPrimers.extend(primerPair1.split('_'))
-            allPrimers.extend(primerPair2.split('_'))
-            for primer1 in allPrimers:
-                for primer2 in allPrimers:
+            for primer1 in primerPair1.split('_'):
+                for primer2 in primerPair2.split('_'):
+                    if ('_'.join([primer1,primer2]) in unspecificPrimers or
+                        '_'.join([primer2,primer1]) in unspecificPrimers):
+                        interactions+=1
                     # Check only for 6 nucleotides that can give hybridized 3'-end
-                    if revComplement(primer1[-6:]) in primer2:
+                    elif revComplement(primer1[-6:]) in primer2:
+                        interactions+=1
+                    elif revComplement(primer2[-6:]) in primer1:
                         interactions+=1
     return(interactions)
 
@@ -1686,7 +1909,10 @@ def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,ar
 ## unspecificPrimers is a list of primer pairs that form unspecific products 
 def checkPrimersFit(primers,primersToCompare,
                     minmultdimerdg1=-6,minmultdimerdg2=-10,
-                    unspecificPrimers=None):
+                    unspecificPrimers=[],
+                    mv_conc=50,dv_conc=3,
+                    dntp_conc=0.8,dna_conc=250,
+                    leftAdapter=None,rightAdapter=None):
     leftPrimer,rightPrimer=primersToCompare[0:2]
     chrom,amplStart,amplEnd=primersToCompare[3:6]
     # We need to check the following:
@@ -1703,24 +1929,54 @@ def checkPrimersFit(primers,primersToCompare,
     # Secondary structure with 5'-overhang
     maxdG=minmultdimerdg1
     maxdG2=minmultdimerdg2
-    dG1=primer3.calcHeterodimer(primers[0],leftPrimer).dg/1000
-    dG2=primer3.calcHeterodimer(primers[0],rightPrimer).dg/1000
-    dG3=primer3.calcHeterodimer(primers[1],leftPrimer).dg/1000
-    dG4=primer3.calcHeterodimer(primers[1],rightPrimer).dg/1000
-    if (calcThreeStrikeEndDimer(primers[0],leftPrimer)<maxdG
+    if leftAdapter:
+        leftAdapter=leftAdapter.upper()
+        leftPrimerToCheck1=leftAdapter+primers[0]
+        leftPrimerToCheck2=leftAdapter+leftPrimer
+    else:
+        leftPrimerToCheck1=primers[0]
+        leftPrimerToCheck2=leftPrimer
+    if rightAdapter:
+        rightAdapter=rightAdapter.upper()
+        rightPrimerToCheck1=rightAdapter+primers[1]
+        rightPrimerToCheck2=rightAdapter+rightPrimer
+    else:
+        rightPrimerToCheck1=primers[1]
+        rightPrimerToCheck2=rightPrimer
+    dG1=primer3.calcHeterodimer(leftPrimerToCheck1,leftPrimerToCheck2,
+                                mv_conc=mv_conc,dv_conc=dv_conc,
+                                dntp_conc=dntp_conc,dna_conc=dna_conc).dg/1000
+    dG2=primer3.calcHeterodimer(leftPrimerToCheck1,rightPrimerToCheck2,
+                                mv_conc=mv_conc,dv_conc=dv_conc,
+                                dntp_conc=dntp_conc,dna_conc=dna_conc).dg/1000
+    dG3=primer3.calcHeterodimer(rightPrimerToCheck1,leftPrimerToCheck2,
+                                mv_conc=mv_conc,dv_conc=dv_conc,
+                                dntp_conc=dntp_conc,dna_conc=dna_conc).dg/1000
+    dG4=primer3.calcHeterodimer(rightPrimerToCheck1,rightPrimerToCheck2,
+                                mv_conc=mv_conc,dv_conc=dv_conc,
+                                dntp_conc=dntp_conc,dna_conc=dna_conc).dg/1000
+    if (calcThreeStrikeEndDimer(leftPrimerToCheck1,leftPrimerToCheck2,
+                                mv_conc,dv_conc,
+                                dntp_conc,dna_conc)<maxdG
         or dG1<maxdG2):
         return(False,'Heterodimer of F-primer with F-primer')
-    if (calcThreeStrikeEndDimer(primers[0],rightPrimer)<maxdG
+    if (calcThreeStrikeEndDimer(leftPrimerToCheck1,rightPrimerToCheck2,
+                                mv_conc,dv_conc,
+                                dntp_conc,dna_conc)<maxdG
         or dG2<maxdG2):
         return(False,'Heterodimer of F-primer with R-primer')
-    if (calcThreeStrikeEndDimer(primers[1],leftPrimer)<maxdG
+    if (calcThreeStrikeEndDimer(rightPrimerToCheck1,leftPrimerToCheck2,
+                                mv_conc,dv_conc,
+                                dntp_conc,dna_conc)<maxdG
         or dG3<maxdG2):
         return(False,'Heterodimer of R-primer with F-primer')
-    if (calcThreeStrikeEndDimer(primers[1],rightPrimer)<maxdG
+    if (calcThreeStrikeEndDimer(rightPrimerToCheck1,rightPrimerToCheck2,
+                                mv_conc,dv_conc,
+                                dntp_conc,dna_conc)<maxdG
         or dG4<maxdG2):
         return(False,'Heterodimer of R-primer with R-primer')
     # Unspecific products
-    if unspecificPrimers:
+    if len(unspecificPrimers)>0:
         if ('_'.join([primers[0],leftPrimer]) in unspecificPrimers
             or '_'.join([primers[0],rightPrimer]) in unspecificPrimers
             or '_'.join([primers[1],leftPrimer]) in unspecificPrimers
@@ -1730,13 +1986,16 @@ def checkPrimersFit(primers,primersToCompare,
 
 # Function that checks if two primers can hybridize with hybridized 3'-end
 # Start from 4 nucleotides
-def calcThreeStrikeEndDimer(primer1,primer2,startEndLen=4):
+def calcThreeStrikeEndDimer(primer1,primer2,
+                            mv_conc=50,dv_conc=3,
+                            dntp_conc=0.8,dna_conc=250,
+                            startEndLen=4):
     # Get the longest region of primer1 3'-end that can hybridize to primer2
     endLen=startEndLen
     if revComplement(primer1[-endLen:]) in primer2:
         while(endLen<len(primer1)):
             endLen+=1
-            if revComplement(primer1[-endLen:]) not in primer2:
+            if revComplement(primer1[-endLen:]) not in primer2[1:]:
                 endLen-=1
                 break
         # Get dG for the longest region found
@@ -1744,26 +2003,83 @@ def calcThreeStrikeEndDimer(primer1,primer2,startEndLen=4):
         thermoStart1=min(len(primer1),endLen+1)
         thermoStart2=max(0,primer2.index(revComplement(primer1[-endLen:]))-1)
         thermoEnd2=min(len(primer2),primer2.index(revComplement(primer1[-endLen:]))+endLen+1)
-        dG1=primer3.calcHeterodimer(primer1[-thermoStart1:],primer2[thermoStart2:thermoEnd2]).dg/1000
+        dG1=primer3.calcHeterodimer(primer1[-thermoStart1:],primer2[thermoStart2:thermoEnd2],
+                                    mv_conc=mv_conc,dv_conc=dv_conc,
+                                    dntp_conc=dntp_conc,dna_conc=dna_conc).dg/1000
     else:
         dG1=0
-    # Get the longest region of primer2 3'-end that can hybridize to primer1
-    endLen=startEndLen
-    if revComplement(primer2[-endLen:]) in primer1:
-        while(endLen<len(primer2)):
-            endLen+=1
-            if revComplement(primer2[-endLen:]) not in primer1:
-                endLen-=1
-                break
-        # Get dG for the longest region found
-        # We take -1 and +1 nucleotides from the hybridized region
-        thermoStart1=min(len(primer2),endLen+1)
-        thermoStart2=max(0,primer1.index(revComplement(primer2[-endLen:]))-1)
-        thermoEnd2=min(len(primer1),primer1.index(revComplement(primer2[-endLen:]))+endLen+1)
-        dG2=primer3.calcHeterodimer(primer2[-thermoStart1:],primer1[thermoStart2:thermoEnd2]).dg/1000
+    if primer1!=primer2:
+        # Get the longest region of primer2 3'-end that can hybridize to primer1
+        endLen=startEndLen
+        if revComplement(primer2[-endLen:]) in primer1[1:]:
+            while(endLen<len(primer2)):
+                endLen+=1
+                if revComplement(primer2[-endLen:]) not in primer1:
+                    endLen-=1
+                    break
+            # Get dG for the longest region found
+            # We take -1 and +1 nucleotides from the hybridized region
+            thermoStart1=min(len(primer2),endLen+1)
+            thermoStart2=max(0,primer1.index(revComplement(primer2[-endLen:]))-1)
+            thermoEnd2=min(len(primer1),primer1.index(revComplement(primer2[-endLen:]))+endLen+1)
+            dG2=primer3.calcHeterodimer(primer2[-thermoStart1:],primer1[thermoStart2:thermoEnd2],
+                                        mv_conc=mv_conc,dv_conc=dv_conc,
+                                        dntp_conc=dntp_conc,dna_conc=dna_conc).dg/1000
+        else:
+            dG2=0
     else:
         dG2=0
     return(min(dG1,dG2))
+
+# Function that checks if primer can form hairpin with hybridized 3'-end
+# Start from 3 nucleotides
+def calcThreeStrikeEndHairpin(seq,
+                              nucs=3,minLoop=3,
+                              mv_conc=50,dv_conc=3,
+                              dntp_conc=0.8,dna_conc=250):
+    seq=seq.upper()
+    # Create reverse complement sequence for the sequence
+    seq_rc=revComplement(seq)
+    # Take last 3 nucleotides of 3'-end of sequence
+    end3=seq[-nucs:]
+    # Check if end3 has reverse complement sequence
+    # in other part of sequence with distance minimum 3 nucs
+    if end3 in seq_rc[len(end3)+minLoop:]:
+        # Then trying to extend this end3
+        # Var for storing extension length
+        extension=0
+        while(True):
+            # Increase extension
+            extension+=1
+            if nucs+extension>len(seq)-(nucs+minLoop+extension):
+                end3=seq[-(nucs+extension):]
+                break
+            # Extend end3
+            end3=seq[-(nucs+extension):]
+            if end3 not in seq_rc[len(end3)+minLoop:]:
+                # We do not remove 1st nucleotide because later 
+                # it will be necessary for dimer dG estimation
+                break
+        # Extract rev-compl sequence for it
+        # First, get start of it in seq_rc
+        start=seq_rc[len(end3)-1+minLoop:].index(end3[1:])+len(end3)+minLoop-1
+        # Get end
+        end=start+len(end3)
+        # Extract from seq subsequence that will hybridize with end3
+        subSeq=seq[-end:-(start-1)]
+        # When we have the longest part of end3 that is revComplement
+        # to some part of seq,
+        # approximately estimate its strength by calculating dG for dimer
+##        print(subSeq)
+##        print(end3)
+        dG=primer3.calcHeterodimer(subSeq,end3,
+                                   mv_conc=mv_conc,dv_conc=dv_conc,
+                                   dntp_conc=dntp_conc,dna_conc=dna_conc).dg/1500
+        # We divide it on 2000 instead of 1000, because it's only approximation
+        return(dG)
+    else:
+        return(0)
+                
 
 def extractGenomeSeq(refFa,chrom,start,end):
     attempts=0
@@ -1814,6 +2130,16 @@ par.add_argument('--whole-genome-ref','-wgref',
                  dest='wholeGenomeRef',type=str,
                  help='file with INDEXED whole-genome reference sequence',
                  required=True)
+par.add_argument('--adapter-for-left','-ad1',
+                 dest='leftAdapter',type=str,
+                 help='adapter for left primers. Use it, if you want to preserve '
+                      'formation of second structures with adapter sequences (optional)',
+                 required=False)
+par.add_argument('--adapter-for-right','-ad2',
+                 dest='rightAdapter',type=str,
+                 help='adapter for right primers. Use it, if you want to preserve '
+                      'formation of second structures with adapter sequences (optional)',
+                 required=False)
 par.add_argument('--min-amplicon-length','-minampllen',
                  dest='minAmplLen',type=int,
                  help='minimal length of amplicons. Default: 75',
@@ -2128,8 +2454,11 @@ if args.primersFile:
                 for node in globalMultiplexNums.nodes():
                     try:
                         fit,problem=checkPrimersFit(internalPrimers[0:2]+[chrom,amplStart,amplEnd],
-                                                    outputInternalPrimers[node],
-                                                    args.minMultDimerdG1,args.minMultDimerdG2)
+                                                    outputInternalPrimers[node],[],
+                                                    args.minMultDimerdG1,args.minMultDimerdG2,
+                                                    args.mvConc,args.dvConc,
+                                                    args.dntpConc,args.primerConc,
+                                                    args.leftAdapter,args.rightAdapter)
                     except KeyError:
                         print('ERROR:',outputInternalPrimers.keys())
                         print(globalMultiplexNums.nodes())
@@ -2318,7 +2647,7 @@ if args.primersFile:
         print(' # Number of external primer pairs that form unspecific product:',len(unspecificPrimers))
         logger.info(' # Number of external primer pairs that form unspecific product: '+str(len(unspecificPrimers)))
     elif not args.doBlast:
-        unspecificPrimers=None
+        unspecificPrimers=[]
     if args.doBlast and unspecificExternalPairs>0:
         print('WARNING! '+str(unspecificExternalPairs)+' external primers have nonspecific regions of hybridization or may amplify nonspecific product.')
         print('You can read this statistics in the corresponding output files.')
@@ -2335,7 +2664,9 @@ if args.primersFile:
                 fit,problem=checkPrimersFit(extPrimers[0:2]+extPrimers[3:6],
                                             outputExternalPrimers[node],
                                             args.minMultDimerdG1,args.minMultDimerdG2,
-                                            unspecificPrimers)
+                                            unspecificPrimers,
+                                            args.mvConc,args.dvConc,
+                                            args.dntpConc,args.primerConc)
                 if not fit:
                     mpws.write_row(mpwsRowNum,0,[','.join(extPrimers[0:2]),','.join(outputExternalPrimers[node][0:2]),problem])
                     mpwsRowNum+=1
@@ -2429,7 +2760,8 @@ else:
                 # Go through all regions sorted by chromosome and coordinate of start
                 print('Creating input parameters for primer3...')
                 logger.info('Creating input parameters for primer3...')
-                primer3Params=createPrimer3_parameters(uncoveredRegions,args,regionNameToPrimerType=regionNameToPrimerType)
+                primer3Params=createPrimer3_parameters(uncoveredRegions,args,
+                                                       regionNameToPrimerType=regionNameToPrimerType)
                 # Construct primers for each created set of parameters
                 print('Constructing primers...')
                 logger.info('Constructing primers...')
@@ -2474,8 +2806,11 @@ else:
             unspecificPrimers=getPrimerPairsThatFormUnspecificProduct(primersNonSpecRegionsByChrs,args.maxNonSpecLen)
             print('\n # Number of primer pairs that form unspecific product:',len(unspecificPrimers))
             logger.info(' # Number of primer pairs that form unspecific product: '+str(len(unspecificPrimers)))
+##            writeUnspecificPrimers(primersInfo,
+##                                   args.regionsFile[:-4]+'_NGS_primerplex_unspecific_products.xls',
+##                                   unspecificPrimers)
     else:
-        unspecificPrimers=None
+        unspecificPrimers=[]
     # Check primers for covering high-frequent SNPs
     if args.snps:
         print('Analyzing primers for covering high-frequent SNPs...')
@@ -2546,6 +2881,7 @@ else:
     # Get best combinations of amplified block variants
     combinations=getBestPrimerCombinations(allRegionsAmplifiedBlocks,
                                            primersInfo,
+                                           unspecificPrimers,
                                            args.returnVariantsNum,
                                            args.triesToGetCombination,
                                            totalMultiplexVariants)
@@ -2648,7 +2984,10 @@ else:
                                 fit,problem=checkPrimersFit(c+[chrom,amplStart,amplEnd],
                                                             outputInternalPrimers[node],
                                                             args.minMultDimerdG1,args.minMultDimerdG2,
-                                                            unspecificPrimers)
+                                                            unspecificPrimers,
+                                                            args.mvConc,args.dvConc,
+                                                            args.dntpConc,args.primerConc,
+                                                            args.leftAdapter,args.rightAdapter)
                             except KeyError:
                                 print('ERROR:',outputInternalPrimers.keys())
                                 print(globalMultiplexNums.nodes())
@@ -2892,7 +3231,7 @@ else:
                 print(' # Number of external primer pairs that form unspecific product:',len(unspecificPrimers))
                 logger.info(' # Number of external primer pairs that form unspecific product: '+str(len(unspecificPrimers)))
             elif not args.doBlast:
-                unspecificPrimers=None
+                unspecificPrimers=[]
             if args.doBlast and unspecificExternalPairs>0:
                 print('WARNING! '+str(unspecificExternalPairs)+' external primers have nonspecific regions of hybridization or may amplify nonspecific product.')
                 print('You can read this statistics in the corresponding output files.')
@@ -2909,7 +3248,9 @@ else:
                         fit,problem=checkPrimersFit(extPrimers[0:2]+extPrimers[3:6],
                                                     outputExternalPrimers[node],
                                                     args.minMultDimerdG1,args.minMultDimerdG2,
-                                                    unspecificPrimers)
+                                                    unspecificPrimers,
+                                                    args.mvConc,args.dvConc,
+                                                    args.dntpConc,args.primerConc)
                         if not fit:
                             mpws.write_row(mpwsRowNum,0,[','.join(extPrimers[0:2]),','.join(outputExternalPrimers[node][0:2]),problem])
                             mpwsRowNum+=1
@@ -3006,4 +3347,6 @@ else:
 
 
 # TODO:
-        
+# write to README about numpy
+# make function that writes list of unspecific products into file
+# make function that reads list of unspecific products from file
