@@ -88,13 +88,15 @@ def readInputFile(regionsFile):
                             exit(2)
                         regionNameToPrimerType[curRegionName]=cols[5]
                     if len(cols)>6 and cols[6]!='':
-                        if cols[6] not in ['W']:
-                            print('ERROR! Unknown value for "using whole region" for the following line of input file:')
-                            print(string)
-                            print('This value can be only "W" (do not split this region onto several amplicons), or nothing (region can be splitted onto several amplicons)')
-                            exit(3)
+##                        if cols[6] not in ['W']:
+##                            print('ERROR! Unknown value for "using whole region" for the following line of input file:')
+##                            print(string)
+##                            print('This value can be only "W" (do not split this region onto several amplicons), or nothing (region can be splitted onto several amplicons)')
+##                            exit(3)
                         if cols[6]=='W':
                             endShift=regEnd-regStart
+                            print('ATTENTION! For region',regionName,'whole region was chosen!')
+                            logger.info('ATTENTION! For region '+regionName+' whole region was chosen!')
                         else:
                             endShift=0
                     else:
@@ -136,7 +138,8 @@ def readPrimersFile(primersFile):
     amplifiedRegions={}
     for i in range(ws.nrows):
         row=ws.row_values(i)
-        if row[0]=='': break
+        if row[0]=='':
+            break
         if i==0:
             # Check that input file has necessary format
             if row[:16]!='#	Left_Primer_Seq	Right_Primer_Seq	Amplicon_Name	Chrom	Amplicon_Start	Amplicon_End	Amplicon_Length	Amplified_Block_Start	Amplified_Block_End	Left_Primer_Tm	Right_Primer_Tm	Left_Primer_Length	Right_Primer_Length	Left_GC	Right_GC'.split('\t'):
@@ -144,10 +147,12 @@ def readPrimersFile(primersFile):
                 logger.error('Input file with primers has incorrect format. You can use only files with primers that has format of NGS-primerplex')
                 exit(5)
             continue
-        if row[4] not in amplifiedRegions.keys():
-            amplifiedRegions[row[4]]=set(range(int(row[8]),int(row[9])+1))
+        # Make chromosome from excel cell
+        chrom=getChrNum(row[4])
+        if chrom not in amplifiedRegions.keys():
+            amplifiedRegions[chrom]=set(range(int(row[8]),int(row[9])+1))
         else:
-            amplifiedRegions[row[4]].update(set(range(int(row[8]),int(row[9])+1)))
+            amplifiedRegions[chrom].update(set(range(int(row[8]),int(row[9])+1)))
         internalPrimers.append(row[1:16])
     return(internalPrimers,amplifiedRegions)
 
@@ -155,7 +160,7 @@ def createPrimer3_parameters(pointRegions,args,species='human',
                              designedInternalPrimers=None,
                              regionNameToPrimerType=None,
                              regionNameNeedToBeWholeLen=None,
-                             amplToChrom={},
+                             regionNameToChrom={},
                              amplToStartCoord={}):
     templatePrimerTags={'PRIMER_TASK':'generic',
                         'PRIMER_PICK_LEFT_PRIMER':1,
@@ -220,11 +225,14 @@ def createPrimer3_parameters(pointRegions,args,species='human',
                     primerTags['PRIMER_PICK_LEFT_PRIMER']=1
                     primerTags['PRIMER_PICK_RIGHT_PRIMER']=1
                 else:
-                    print('ERROR! Unknown type of primers is necessary to be designed for the following region:')
+                    print('ERROR #6: Unknown type of primers is necessary to be designed for the following region:')
+                    logger.error('#6 Unknown type of primers is necessary to be designed for the following region:')
                     print(amplName)
+                    logger.error(amplName)
                     print('This value can be only "L" (only left primer), "R" (only right primer), "B" (both primers) or nothing (both primers)')
+                    logger.error('This value can be only "L" (only left primer), "R" (only right primer), "B" (both primers) or nothing (both primers)')
                     exit(6)
-            amplToChrom[amplName]=chrom
+            regionNameToChrom[amplName]=chrom
             primer3Params[amplName]=[]
             primerTags['PRIMER_PRODUCT_SIZE_RANGE']=[[amplLen+2*args.minPrimerShift,args.maxExtAmplLen]]
             primerTags['PRIMER_PRODUCT_OPT_SIZE']=args.optExtAmplLen
@@ -233,15 +241,31 @@ def createPrimer3_parameters(pointRegions,args,species='human',
             # In COSMIC database chromosome X and Y are designated as 23 and 24, respectively
             ## So we need to check if primers are designed for human genome and chromosomes may be 23 and 24 instead of X and Y
             if species=='human':
-                if chrom=='23': chromName='X'
-                elif chrom=='24': chromName='Y'
-                else: chromName=str(chrom)
+                if chrom=='23':
+                    chromName='X'
+                elif chrom=='24':
+                    chromName='Y'
+                else:
+                    chromName=str(chrom)
             else:
                 chromName=str(chrom)
+            if (chrTargetSeqStart<0 or
+                amplBlockEnd+args.maxExtAmplLen-args.minPrimerShift-args.minPrimerLen<0):
+                print('ERROR #54: Unknown error with coordinates for sequence extraction from genome:')
+                logger.error('#54 Unknown error with coordinates for sequence extraction from genome:')
+                print(chromName,chrTargetSeqStart,amplBlockEnd,
+                      args.maxExtAmplLen,args.minPrimerShift,
+                      args.minPrimerLen)
+                logger.error(', '.join(map(str,[chromName,chrTargetSeqStart,amplBlockEnd,
+                                                     args.maxExtAmplLen,args.minPrimerShift,
+                                                     args.minPrimerLen])))
+                exit(54)
             lines=pysam.faidx(wgref,'chr'+chromName+':'+str(chrTargetSeqStart)+'-'+str(amplBlockEnd+(args.maxExtAmplLen-args.minPrimerShift-args.minPrimerLen)+1)).split('\n')
             if lines[1]=='':
-                print('ERROR! Extracted sequence has no length')
+                print('ERROR #7: Extracted sequence has no length')
+                logger.error('#7 Extracted sequence has no length')
                 print(chromName,start-1-args.maxAmplLen,end+args.maxAmplLen)
+                logger.error(', '.join(map(str,[chromName,start-1-args.maxAmplLen,end+args.maxAmplLen])))
                 exit(7)
             regionSeq=''.join(lines[1:-1]).upper()
             targetRegion=str(amplBlockStart-args.minPrimerShift-chrTargetSeqStart)+','+str(amplBlockEnd-amplBlockStart+1+2*args.minPrimerShift)
@@ -267,7 +291,7 @@ def createPrimer3_parameters(pointRegions,args,species='human',
                     primerPairOkRegion=[[targetRegionStart-args.maxPrimerLen-2,args.maxPrimerLen+2,targetRegionEnd+1,len(regionSeq)-targetRegionEnd-1]]
                 seqTags['SEQUENCE_PRIMER_PAIR_OK_REGION_LIST']=primerPairOkRegion
                 primer3Params[amplName].append([deepcopy(seqTags),deepcopy(primerTags)])
-        return(primer3Params,amplToChrom,amplToStartCoord)
+        return(primer3Params,regionNameToChrom,amplToStartCoord)
     else:
         primerTags['PRIMER_PRODUCT_SIZE_RANGE']=[[args.minAmplLen,args.maxAmplLen]]
         primerTags['PRIMER_PRODUCT_OPT_SIZE']=args.optAmplLen
@@ -302,14 +326,23 @@ def createPrimer3_parameters(pointRegions,args,species='human',
                 # In COSMIC database chromosome X and Y are designated as 23 and 24, respectively
                 ## So we need to check if primers are designed for human genome and chromosomes may be 23 and 24 instead of X and Y
                 if species=='human':
-                    if chrom=='23': chromName='X'
-                    elif chrom=='24': chromName='Y'
-                    else: chromName=str(chrom)
+                    if chrom=='23':
+                        chromName='X'
+                    elif chrom=='24':
+                        chromName='Y'
+                    else:
+                        chromName=str(chrom)
                 else:
                     chromName=str(chrom)
+                if start-args.maxAmplLen<0:
+                    print('ERROR! (53) Unknown error with coordinates for sequence extraction from genome:')
+                    logger.error('(53) Unknown error with coordinates for sequence extraction from genome:')
+                    print(chromName,start,args.maxAmplLen,end)
+                    logger.error(', '.join([chromName,str(start),str(args.maxAmplLen),str(end)]))
+                    exit(53)
                 lines=pysam.faidx(wgref,'chr'+chromName+':'+str(start-args.maxAmplLen)+'-'+str(end+args.maxAmplLen)).split('\n')
                 if lines[1]=='':
-                    print('ERROR! Extracted sequence has no length')
+                    print('ERROR! (9) Extracted sequence has no length')
                     print(chromName,start-1-args.maxAmplLen,end+args.maxAmplLen)
                     exit(9)
                 regionSeq=''.join(lines[1:-1]).upper()
@@ -909,7 +942,7 @@ def getRegionsUncoveredByDraftExternalPrimers(primersInfo,primersInfoByChrom,out
                                            # end-primersCoords[1][1]-outputInternalPrimers[curRegionName][8]+1,extendedAmplSeq]]
     outputExternalPrimers={}
     uncoveredInternalPrimers=deepcopy(outputInternalPrimers)
-    amplToChrom={}
+    regionNameToChrom={}
     amplToStartCoord={}
     refFa=pysam.FastaFile(args.wholeGenomeRef)
     for chrom,coords in primersInfoByChrom.items():
@@ -940,11 +973,12 @@ def getRegionsUncoveredByDraftExternalPrimers(primersInfo,primersInfoByChrom,out
                                                           len(leftPrimer),len(rightPrimer),leftGC,rightGC,
                                                           parameters[7]-1-(coord[0][0]+coord[0][1]-1),
                                                           coord[1][0]-coord[1][1]+1-parameters[8]+1,seq]]
-                    uncoveredInternalPrimers.pop(amplName)
+                    if amplName in uncoveredInternalPrimers.keys():
+                        uncoveredInternalPrimers.pop(amplName)
                     chrTargetSeqStart=parameters[9]-(args.maxExtAmplLen-args.minPrimerShift-args.minPrimerLen)
-                    amplToChrom[parameters[2]]=str(chrom)
+                    regionNameToChrom[parameters[2]]=str(chrom)
                     amplToStartCoord[parameters[2]]=chrTargetSeqStart
-    return(outputExternalPrimers,uncoveredInternalPrimers,amplToChrom,amplToStartCoord)
+    return(outputExternalPrimers,uncoveredInternalPrimers,regionNameToChrom,amplToStartCoord)
 
 ##def writeUnspecificPrimers(primersInfo,rFile,unspecificPrimers):
 ##    # Write all primers and for primers ]
@@ -1397,9 +1431,14 @@ def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,
     elif chrom=='24':
         chrom='Y'
     snps=[]
-    for snp in vcf.fetch(chrom,start-1,end):
-        if float(snp.info['CAF'][0])<1-freq:
-            snps.append(snp)
+    try:
+        for snp in vcf.fetch(chrom,start-1,end):
+            if float(snp.info['CAF'][0])<1-freq:
+                snps.append(snp)
+    except ValueError:
+        print('ERROR! You need to place *.tbi file for dbSNP VCF-file in the same folder:')
+        print(dbSnpVcfFile)
+        exit(49)
     if len(snps)>0:
         hfSnpFound=True
     return(primer,hfSnpFound)
@@ -1955,11 +1994,20 @@ def checkPrimersFit(primers,primersToCompare,
     dG4=primer3.calcHeterodimer(rightPrimerToCheck1,rightPrimerToCheck2,
                                 mv_conc=mv_conc,dv_conc=dv_conc,
                                 dntp_conc=dntp_conc,dna_conc=dna_conc).dg/1000
-    if (calcThreeStrikeEndDimer(leftPrimerToCheck1,leftPrimerToCheck2,
-                                mv_conc,dv_conc,
-                                dntp_conc,dna_conc)<maxdG
-        or dG1<maxdG2):
-        return(False,'Heterodimer of F-primer with F-primer')
+    try:
+        if (calcThreeStrikeEndDimer(leftPrimerToCheck1,leftPrimerToCheck2,
+                                    mv_conc,dv_conc,
+                                    dntp_conc,dna_conc)<maxdG
+            or dG1<maxdG2):
+            return(False,'Heterodimer of F-primer with F-primer')
+    except TypeError as e:
+        print('ERROR! Unknown error:',e)
+        logger.error('Unknown error: '+str(e))
+        print(calcThreeStrikeEndDimer(leftPrimerToCheck1,leftPrimerToCheck2,mv_conc,dv_conc,dntp_conc,dna_conc))
+        print(maxdG)
+        logger.error(calcThreeStrikeEndDimer(leftPrimerToCheck1,leftPrimerToCheck2,mv_conc,dv_conc,dntp_conc,dna_conc))
+        logger.error(maxdG)
+        exit(51)
     if (calcThreeStrikeEndDimer(leftPrimerToCheck1,rightPrimerToCheck2,
                                 mv_conc,dv_conc,
                                 dntp_conc,dna_conc)<maxdG
@@ -2124,9 +2172,10 @@ par.add_argument('--primers-file','-primers',
                  required=False)
 par.add_argument('--draft-primers','-draft',
                  dest='draftFile',type=str,
-                 help='file with internal primers previously designed for part of input regions. The program will design primers for the left regions',
+                 help='file with internal primers previously designed for part of input regions. '
+                      'The program will design primers for the left regions',
                  required=False)
-par.add_argument('--whole-genome-ref','-wgref',
+par.add_argument('--reference-genome','-ref',
                  dest='wholeGenomeRef',type=str,
                  help='file with INDEXED whole-genome reference sequence',
                  required=True)
@@ -2142,76 +2191,76 @@ par.add_argument('--adapter-for-right','-ad2',
                  required=False)
 par.add_argument('--min-amplicon-length','-minampllen',
                  dest='minAmplLen',type=int,
-                 help='minimal length of amplicons. Default: 75',
-                 required=False,default=75)
+                 help='minimal length of amplicons. Default: 100',
+                 required=False,default=100)
 par.add_argument('--max-amplicon-length','-maxampllen',
                  dest='maxAmplLen',type=int,
-                 help='maximal length of amplicons. Default: 100',
-                 required=False,default=100)
+                 help='maximal length of amplicons. Default: 110',
+                 required=False,default=110)
 par.add_argument('--optimal-amplicon-length','-optampllen',
                  dest='optAmplLen',type=int,
-                 help='optimal length of amplicons. Default: 90',
-                 required=False,default=90)
+                 help='optimal length of amplicons. Default: 110',
+                 required=False,default=110)
 par.add_argument('--min-primer-length','-minprimerlen',
                  dest='minPrimerLen',type=int,
-                 help='minimal length of primers. Default: 18',
-                 required=False,default=18)
+                 help='minimal length of primers. Default: 16',
+                 required=False,default=16)
 par.add_argument('--max-primer-length','-maxprimerlen',
                  dest='maxPrimerLen',type=int,
-                 help='maximal length of primers. Default: 25',
-                 required=False,default=25)
+                 help='maximal length of primers. Default: 28',
+                 required=False,default=28)
 par.add_argument('--optimal-primer-length','-optprimerlen',
                  dest='optPrimerLen',type=int,
                  help='optimal length of primers. Default: 23',
                  required=False,default=23)
 par.add_argument('--min-primer-melting-temp','-minprimermelt',
                  dest='minPrimerMelt',type=int,
-                 help='minimal melting temperature of primers, degrees Celsius. Default: 62',
-                 required=False,default=62)
+                 help='minimal melting temperature of primers, degrees Celsius. Default: 60',
+                 required=False,default=60)
 par.add_argument('--max-primer-melting-temp','-maxprimermelt',
                  dest='maxPrimerMelt',type=int,
-                 help='maximal melting temperature of primers, degrees Celsius. Default: 66',
-                 required=False,default=66)
+                 help='maximal melting temperature of primers, degrees Celsius. Default: 68',
+                 required=False,default=68)
 par.add_argument('--optimal-primer-melting-temp','-optprimermelt',
                  dest='optPrimerMelt',type=int,
                  help='optimal melting temperature of primers, degrees Celsius. Default: 64',
                  required=False,default=64)
 par.add_argument('--min-primer-gc','-minprimergc',
                  dest='minPrimerGC',type=int,
-                 help='minimal acceptable GC-content for primers. Default: 25',
-                 required=False,default=25)
+                 help='minimal acceptable GC-content for primers. Default: 20',
+                 required=False,default=20)
 par.add_argument('--max-primer-gc','-maxprimergc',
                  dest='maxPrimerGC',type=int,
-                 help='maximal acceptable GC-content for primers. Default: 60',
-                 required=False,default=60)
+                 help='maximal acceptable GC-content for primers. Default: 80',
+                 required=False,default=80)
 par.add_argument('--optimal-primer-gc','-optprimergc',
                  dest='optPrimerGC',type=int,
                  help='optimal acceptable GC-content for primers. Default: 40',
                  required=False,default=40)
 par.add_argument('--min-primer-end-gc','-minprimerendgc',
                  dest='minPrimerEndGC',type=int,
-                 help="minimal acceptable number of G or C nucleotides within last 5 nucleotides of 3'-end of primers. Default: 1",
-                 required=False,default=1)
+                 help="minimal acceptable number of G or C nucleotides within last 5 nucleotides of 3'-end of primers. Default: 0",
+                 required=False,default=0)
 par.add_argument('--max-primer-end-gc','-maxprimerendgc',
                  dest='maxPrimerEndGC',type=int,
-                 help="maximal acceptable number of G or C nucleotides within last 5 nucleotides of 3'-end of primers. Default: 3",
-                 required=False,default=3)
+                 help="maximal acceptable number of G or C nucleotides within last 5 nucleotides of 3'-end of primers. Default: 5",
+                 required=False,default=5)
 par.add_argument('--opt-primer-end-gc','-optprimerendgc',
                  dest='optPrimerEndGC',type=int,
                  help="optimal number of G or C nucleotides within last 5 nucleotides of 3'-end of primers. Default: 2",
                  required=False,default=2)
 par.add_argument('--max-primer-poly-n','-maxprimerpolyn',
                  dest='maxPrimerPolyN',type=int,
-                 help="maximal acceptable length of some poly-N in primers. Default: 3",
-                 required=False,default=3)
+                 help="maximal acceptable length of some poly-N in primers. Default: 8",
+                 required=False,default=8)
 par.add_argument('--max-primer-compl-end-th','-maxprimercomplendth',
                  dest='maxPrimerComplEndTh',type=int,
-                 help="maximal Tm for complementarity of 3'-ends of primers. Default: 15",
-                 required=False,default=15)
+                 help="maximal Tm for complementarity of 3'-ends of primers. Default: 25",
+                 required=False,default=25)
 par.add_argument('--max-primer-compl-any-th','-maxprimercomplanyth',
                  dest='maxPrimerComplAnyTh',type=int,
-                 help="maximal Tm for any complementarity of primers. Default: 30",
-                 required=False,default=30)
+                 help="maximal Tm for any complementarity of primers. Default: 35",
+                 required=False,default=35)
 par.add_argument('--max-primer-hairpin-th','-maxprimerhairpinth',
                  dest='maxPrimerHairpinTh',type=int,
                  help="maximal melting temperature of primer hairpin structure. Default: 40",
@@ -2222,23 +2271,27 @@ par.add_argument('--max-primer-nonspecific','-maxprimernonspec',
                  required=False,default=1000)
 par.add_argument('--max-amplicons-overlap','-maxoverlap',
                  dest='maxoverlap',type=int,
-                 help='maximal length of overlap between two amplified blocks (it does not include primers). Default: 5',
-                 required=False,default=5)
+                 help='maximal length of overlap between two amplified blocks (it does not include primers). Default: 50',
+                 required=False,default=50)
 par.add_argument('--primers-number1','-primernum1',
                  dest='primernum1',type=int,
-                 help='number of primer that user wants to get on the 1st stage. The more this value, the more precise the choice of primers, but the longer the design time. Default: 5',
-                 required=False,default=5)
+                 help='number of primer that user wants to get on the 1st stage. '
+                      'The more this value, the more precise the choice of primers, but the longer the design time. Default: 50',
+                 required=False,default=50)
 par.add_argument('--auto-adjust-parameters','-autoadjust',
                  dest='autoAdjust',action='store_true',
-                 help='use this parameter if you want NGS-PrimerPlex to automatically use less stringent parameters if no primer were constructed for some region')
+                 help='use this parameter if you want NGS-PrimerPlex to automatically use less stringent parameters '
+                      'if no primer were constructed for some region')
 par.add_argument('--tries-to-get-best-combination','-tries',
                  dest='triesToGetCombination',type=int,
-                 help='number of of tries to get the best primer combination. More the value, better combination will be, but this will take more time. Default: 1000',
-                 required=False,default=1000)
+                 help='number of of tries to get the best primer combination. '
+                      'More the value, better combination will be, '
+                      'but this will take more time. Default: 10000',
+                 required=False,default=10000)
 par.add_argument('--return-variants-number','-returnvariantsnum',
                  dest='returnVariantsNum',type=int,
-                 help='number of multiplexes variants that user wants to get after all analyses and filters. Default: 1',
-                 required=False,default=1)
+                 help='number of multiplexes variants that user wants to get after all analyses and filters. Default: 10',
+                 required=False,default=10)
 par.add_argument('--embedded-amplification','-embedded',
                  dest='embeddedAmpl',action='store_true',
                  help='use this parameter if you want to create NGS-panel with embedded amplification')
@@ -2248,22 +2301,23 @@ par.add_argument('--min-internal-primer-shift','-minprimershift',
                  required=False,default=5)
 par.add_argument('--opt-external-amplicon-length','-optextampllen',
                  dest='optExtAmplLen',type=int,
-                 help="optimal length of the external amplicons. Default: 110",
-                 required=False,default=110)
+                 help="optimal length of the external amplicons. Default: 150",
+                 required=False,default=150)
 par.add_argument('--max-external-amplicon-length','-maxextampllen',
                  dest='maxExtAmplLen',type=int,
-                 help="maximal length of the external amplicons. Default: 130",
-                 required=False,default=130)
+                 help="maximal length of the external amplicons. Default: 150",
+                 required=False,default=150)
 par.add_argument('--do-blast','-blast',
                  dest='doBlast',action='store_true',
                  help='use this parameter if you want to perform Blast-analysis of constructed primers')
 par.add_argument('--substititutions-num','-subst',
                  dest='substNum',type=int,
-                 help='accepted number of substitutions for searching primers in genome. Default: 2',
-                 required=False,default=2)
+                 help='accepted number of substitutions for searching primers in genome. Default: 1',
+                 required=False,default=1)
 par.add_argument('--max-nonspecific-amplicon-length','-maxnonspeclen',
                  dest='maxNonSpecLen',type=int,
-                 help='maximal length of nonspecific amplicons that the program should consider. For example, if you design primers for DNA from serum, you can set it as 150. Default: 200',
+                 help='maximal length of nonspecific amplicons that the program should consider. '
+                      'For example, if you design primers for DNA from serum, you can set it as 150. Default: 200',
                  required=False,default=200)
 par.add_argument('--snps','-snps',
                  dest='snps',action='store_true',
@@ -2284,7 +2338,7 @@ par.add_argument('--min-multiplex-dimer-dg1','-minmultdimerdg1',
                  dest='minMultDimerdG1',type=float,
                  help="minimal acceptable value of free energy of primer dimer formation "
                       "with hybridized 3'-end in one multiplex in kcal/mol. Default: -6",
-                 required=False,default=-5)
+                 required=False,default=-6)
 par.add_argument('--min-multiplex-dimer-dg2','-minmultdimerdg2',
                  dest='minMultDimerdG2',type=float,
                  help="minimal acceptable value of free energy of primer dimer formation "
@@ -2384,7 +2438,16 @@ if args.primersFile:
     # Check that input primers cover all input regions
     chromosomesWithUncoveredRegions=[]
     for chrom,coveredRegions in amplfiedRegions.items():
-        inter=coveredRegions.intersection(regionsCoords[chrom])
+        try:
+            inter=coveredRegions.intersection(regionsCoords[chrom])
+        except KeyError:
+            print('ERROR! Inconsistent chromosome names in two dictionaries:')
+            logger.error('Inconsistent chromosome names in two dictionaries:')
+            print('regionCoords:',regionsCoords.keys())
+            logger.error('regionCoords: '+str(regionsCoords.keys()))
+            print('amplfiedRegions:',amplfiedRegions.keys())
+            logger.error('amplfiedRegions: '+str(amplfiedRegions.keys()))
+            exit(50)
         if len(inter)!=len(regionsCoords[chrom]):
             chromosomesWithUncoveredRegions.append(chrom)
     if len(chromosomesWithUncoveredRegions)>0:
@@ -2405,7 +2468,7 @@ if args.primersFile:
             mpws.set_column(k,k,colsWidth)
     mpwsRowNum=1
     wbw=xls.Workbook(args.primersFile[:-4]+'_with_external_primers.xls')
-    wsw1=wbw.add_worksheet('NGS_Primerplex_External_Primers')
+    wsw1=wbw.add_worksheet('NGS_Primerplex_Internal_Primers')
     wsw1.write_row(0,0,['#','Left_Primer_Seq','Right_Primer_Seq','Amplicon_Name','Chrom','Amplicon_Start','Amplicon_End','Amplicon_Length',
                        'Amplified_Block_Start','Amplified_Block_End','Left_Primer_Tm','Right_Primer_Tm','Left_Primer_Length','Right_Primer_Length','Left_GC','Right_GC','Desired_Multiplex','Designed_Multiplex'])
     colsWidth1=[5,30,30,15,6,12,12,13,12,12,
@@ -2454,8 +2517,8 @@ if args.primersFile:
                 for node in globalMultiplexNums.nodes():
                     try:
                         fit,problem=checkPrimersFit(internalPrimers[0:2]+[chrom,amplStart,amplEnd],
-                                                    outputInternalPrimers[node],[],
-                                                    args.minMultDimerdG1,args.minMultDimerdG2,
+                                                    outputInternalPrimers[node],
+                                                    args.minMultDimerdG1,args.minMultDimerdG2,[],
                                                     args.mvConc,args.dvConc,
                                                     args.dntpConc,args.primerConc,
                                                     args.leftAdapter,args.rightAdapter)
@@ -2475,10 +2538,11 @@ if args.primersFile:
     # We use primer3, too. We extract sequences of the designed above amplicons, extend them
     ## And construct primers that will surround internal amplicons
     ### So the first step is to create primer3 input files
-    print('\nCreating primer3 parameters for external primers design...')
+    print('Creating primer3 parameters for external primers design...')
     logger.info('Creating primer3 parameters for external primers design...')
-    primer3Params,amplToChrom,amplToStartCoord=createPrimer3_parameters(allRegions,args,species='human',designedInternalPrimers=outputInternalPrimers)
-    
+    primer3Params,regionNameToChrom,amplToStartCoord=createPrimer3_parameters(allRegions,args,
+                                                                        species='human',
+                                                                        designedInternalPrimers=outputInternalPrimers)
     p=ThreadPool(args.threads)
     externalPrimersNum=0
     regionsWithoutPrimers=[]
@@ -2493,7 +2557,7 @@ if args.primersFile:
     results=[]
     for regionName,inputParams in primer3Params.items():
         for inputParam in inputParams:
-            results.append(p.apply_async(runPrimer3,(regionName,inputParam,True,args.autoAdjust)))
+            results.append(p.apply_async(runPrimer3,(regionName,inputParam,True,args)))
     outputExternalPrimers={}
     extPrimersInfo={} # This variable only for blasting designed external primers
     doneWork=0
@@ -2502,7 +2566,7 @@ if args.primersFile:
         res=res.get()
         doneWork+=1
         showPercWork(doneWork,wholeWork)
-        curRegionName,primerSeqs,primersCoords,primerTms,amplLens,amplScores,primer3Params=res
+        curRegionName,primerSeqs,primersCoords,primerTms,amplLens,amplScores,primer3Params,designOutput=res
         if primerSeqs==None:
             regionsWithoutPrimers.append(curRegionName)
             continue
@@ -2512,23 +2576,35 @@ if args.primersFile:
             # We do not need to create multiplexes. We only want to surround alredy designed amplicons
             ## with external primers, selecting only the best ones
             try:
-                chrom=amplToChrom[curRegionName]
+                chrom=regionNameToChrom[curRegionName]
             except:
-                print('ERROR!',amplToChrom)
+                print('ERROR (36)!',regionNameToChrom)
                 print(curRegionName)
                 exit(36)
             start=amplToStartCoord[curRegionName]+primersCoords[2*k+0][0]+1
             end=amplToStartCoord[curRegionName]+primersCoords[2*k+1][0]+1
             leftGC=round(100*(primerSeqs[2*k+0].count('G')+primerSeqs[2*k+0].count('C'))/len(primerSeqs[2*k+0]),2)
             rightGC=round(100*(primerSeqs[2*k+1].count('G')+primerSeqs[2*k+1].count('C'))/len(primerSeqs[2*k+1]),2)
-            if chrom=='23': chromName='X'
-            elif chrom=='24': chromName='Y'
-            else: chromName=str(chrom)
-            out=pysam.faidx(wgref,'chr'+chromName+':'+str(start-1-100)+'-'+str(end+100))
+            if chrom==23 or chrom=='23':
+                chromName='X'
+            elif chrom==24 or chrom=='24':
+                chromName='Y'
+            else:
+                chromName=str(chrom)
+            try:
+                out=pysam.faidx(wgref,'chr'+chromName+':'+str(start-1-100)+'-'+str(end+100))
+            except pysam.utils.SamtoolsError:
+                print('ERROR #49: File with reference genome is corrupted:')
+                logger.error('#49 File with reference genome is corrupted:')
+                print(wgref)
+                logger.error(wgref)
+                exit(49)
             lines=out.split('\n')
             if lines[1]=='':
-                print('ERROR! Extracted sequence has no length')
+                print('ERROR #37: Extracted sequence has no length')
+                logger.error('#37 Extracted sequence has no length')
                 print(chromName,start-1-100,end+100)
+                logger.error(', '.join(map(str,[chromName,start-1-100,end+100])))
                 exit(37)
             extendedAmplSeq=''.join(lines[1:-1]).upper()
             if curRegionName not in outputExternalPrimers.keys():
@@ -2543,14 +2619,14 @@ if args.primersFile:
                                                              primerTms[0],primerTms[1],len(primerSeqs[0]),len(primerSeqs[1]),
                                                              leftGC,rightGC,outputInternalPrimers[curRegionName][7]-(start+primersCoords[0][1])+1,
                                                              end-primersCoords[1][1]-outputInternalPrimers[curRegionName][8]+1,extendedAmplSeq])
-            extPrimersInfo['_'.join(primerSeqs[2*k:2*k+2])]=[chrom,start,start+primersCoords[2*k][1]-1,end-primersCoords[2*k+1][1]+1,end]
+            extPrimersInfo['_'.join(primerSeqs[2*k:2*k+2])]=[[[start,primersCoords[2*k][1]],[end,primersCoords[2*k+1][1]]],primerTms,end-start+1,0,chrom]
             externalPrimersNum+=1
     # Statistics of the external primers design
     if len(regionsWithoutPrimers)>0:
         regionsWithoutPrimersCounter=Counter(regionsWithoutPrimers)
         if 3 in regionsWithoutPrimersCounter.values():
-            print('\n # WARNING! For',list(regionsWithoutPrimersCounter.values()).count(3),'amplicons external primers were not designed! Try less stringent parameters.')
-            logger.warn(' # WARNING! For '+str(list(regionsWithoutPrimersCounter.values()).count(3))+' amplicons external primers were not designed! Try less stringent parameters.')
+            print('\n # WARNING! For',list(regionsWithoutPrimersCounter.values()).count(3),'amplicon(s) external primers were not designed! Try less stringent parameters.')
+            logger.warn(' # WARNING! For '+str(list(regionsWithoutPrimersCounter.values()).count(3))+' amplicon(s) external primers were not designed! Try less stringent parameters.')
             for regionsWithoutPrimer,value in sorted(regionsWithoutPrimersCounter.items(),key=itemgetter(1),reverse=True):
                 if value<3: break
                 print('   '+regionsWithoutPrimer)
@@ -2572,25 +2648,10 @@ if args.primersFile:
     if args.snps:
         print('Analyzing external primers for covering high-frequent SNPs...')
         logger.info('Analyzing external primers for covering high-frequent SNPs...')
-        p=ThreadPool(args.threads)
-        results=[]
-        for primers,info in extPrimersInfo.items():
-            primer1,primer2=primers.split('_')
-            chrom=info[0]
-            start1=info[1]; start2=info[3]
-            end1=info[2]; end2=info[4]
-            strand1=1; strand2=-1
-            results.append(p.apply_async(checkPrimerForCrossingSNP,(primer1,chrom,start1,end1,strand1,args.snpFreq)))
-            results.append(p.apply_async(checkPrimerForCrossingSNP,(primer2,chrom,start2,end2,strand2,args.snpFreq)))
-        primersCoveringSNPs=[]
-        wholeWork=len(results)
-        done=0
-        for res in results:
-            primer,result=res.get()
-            if result:
-                primersCoveringSNPs.append(primer)
-            done+=1
-            showPercWork(done,wholeWork)
+        primerPairsNonCoveringSNPs,primersCoveringSNPs=analyzePrimersForCrossingSNP(extPrimersInfo,
+                                                                                    args.threads,
+                                                                                    args.dbSnpVcfFile,
+                                                                                    args.nucNumToCheck)
         print("\n # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
         logger.info(" # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
     # Now we need to remove unspecific primer pairs
@@ -2684,7 +2745,8 @@ if args.primersFile:
                         else:
                             wsw2.write(amplNameToRowNum[regionName],19,'FAIL')
                 except:
-                    print('ERROR!',amplNameToRowNum[regionName],primer[:-1])
+                    print('ERROR #38 ',amplNameToRowNum[regionName],primer[:-1])
+                    logger.error('#38 '+str(amplNameToRowNum[regionName])+'\n'+str(primer[:-1]))
                     exit(38)
     if len(regionNameToMultiplex)>0:
         multiplexes=[]
@@ -2742,6 +2804,7 @@ if args.primersFile:
                 wsw1.write(amplNameToRowNum[ampl],17,k+1)
     print()
     logger.info('\n')
+    wbw.close()
 else:
     # If user use as input draft primers
     if args.draftFile:
@@ -2809,6 +2872,8 @@ else:
 ##            writeUnspecificPrimers(primersInfo,
 ##                                   args.regionsFile[:-4]+'_NGS_primerplex_unspecific_products.xls',
 ##                                   unspecificPrimers)
+        else:
+            unspecificPrimers=[]
     else:
         unspecificPrimers=[]
     # Check primers for covering high-frequent SNPs
@@ -2943,9 +3008,12 @@ else:
                     rightGC=0
                 amplLen=amplEnd-amplStart+1
                 leftPrimerTm,rightPrimerTm=primersInfo['_'.join(c)][1]
-                if chrom==23: chromName='X'
-                elif chrom==24: chromName='Y'
-                else: chromName=str(chrom) 
+                if chrom==23 or chrom=='23':
+                    chromName='X'
+                elif chrom==24 or chrom=='24':
+                    chromName='Y'
+                else:
+                    chromName=str(chrom) 
                 out=pysam.faidx(wgref,'chr'+chromName+':'+str(amplStart-1-100)+'-'+str(amplEnd+100))
                 lines=out.split('\n')
                 if lines[1]=='':
@@ -3034,29 +3102,27 @@ else:
                 # primersInfo,primersInfoByChrom,outputInternalPrimers,args
                 output=getRegionsUncoveredByDraftExternalPrimers(extPrimersInfo,extPrimersInfoByChrom,
                                                                  outputInternalPrimers,args)
-                outputExternalPrimers,uncoveredInternalPrimers,amplToChrom,amplToStartCoord=output
+                outputExternalPrimers,uncoveredInternalPrimers,regionNameToChrom,amplToStartCoord=output
                 print('Number of internal amplicons that do not have external primers: '+str(len(uncoveredInternalPrimers)))
                 logger.info('Number of internal amplicons that do not have external primers: '+str(len(uncoveredInternalPrimers)))
                 if len(uncoveredInternalPrimers)>0:
                     # Go through all regions sorted by chromosome and coordinate of start
                     print('Creating input parameters for primer3...')
                     logger.info('Creating input parameters for primer3...')
-                    primer3Params,amplToChrom,amplToStartCoord=createPrimer3_parameters(uncoveredRegions,args,
+                    primer3Params,regionNameToChrom,amplToStartCoord=createPrimer3_parameters(uncoveredRegions,args,
                                                                                         designedInternalPrimers=uncoveredInternalPrimers,
                                                                                         regionNameToPrimerType=regionNameToPrimerType)
             else:
                 print('\nCreating primer3 parameters for external primers design, combination variant '+str(i+1)+'...')
                 logger.info('Creating primer3 parameters for external primers design, combination variant '+str(i+1)+'...')
-                primer3Params,amplToChrom,amplToStartCoord=createPrimer3_parameters(allRegions,args,species='human',
+                primer3Params,regionNameToChrom,amplToStartCoord=createPrimer3_parameters(allRegions,args,species='human',
                                                                                     designedInternalPrimers=outputInternalPrimers,
                                                                                     regionNameToPrimerType=regionNameToPrimerType,
-                                                                                    amplToChrom=amplToChrom,
-                                                                                    amplToStartCoord=amplToStartCoord)
+                                                                                    regionNameToChrom=regionNameToChrom)
                 outputExternalPrimers={}
                 extPrimersInfo={} # This variable only for blasting designed external primers
 
-##            createExternalPrimers(primer3Params,amplToChrom,amplToStartCoord,wgref,args,wbw,colsWidth2)
-            
+##            createExternalPrimers(primer3Params,regionNameToChrom,amplToStartCoord,wgref,args,wbw,colsWidth2)
             p=ThreadPool(args.threads)
             externalPrimersNum=0
             regionsWithoutPrimers=[]
@@ -3071,7 +3137,7 @@ else:
             results=[]
             for regionName,inputParams in primer3Params.items():
                 for inputParam in inputParams:
-                    results.append(p.apply_async(runPrimer3,(regionName,inputParam,True,args.autoAdjust)))
+                    results.append(p.apply_async(runPrimer3,(regionName,inputParam,True,args)))
             doneWork=0
             wholeWork=len(results)
             primerDesignExplains={}
@@ -3099,9 +3165,9 @@ else:
                     # We do not need to create multiplexes. We only want to surround alredy designed amplicons
                     ## with external primers, selecting only the best ones
                     try:
-                        chrom=amplToChrom[curRegionName]
+                        chrom=regionNameToChrom[curRegionName]
                     except:
-                        print('ERROR!',amplToChrom)
+                        print('ERROR!',regionNameToChrom)
                         print(curRegionName)
                         exit(42)
                     if primerSeqs[2*k+0]!='':
@@ -3116,10 +3182,21 @@ else:
                     else:
                         rightGC=0
                         end=amplToStartCoord[curRegionName]+args.maxExtAmplLen-1
-                    if chrom==23: chromName='X'
-                    elif chrom==24: chromName='Y'
-                    else: chromName=str(chrom)
-                    out=pysam.faidx(wgref,'chr'+chromName+':'+str(start-1-100)+'-'+str(end+100))
+                    if chrom==23 or chrom=='23':
+                        chromName='X'
+                    elif chrom==24 or chrom=='24':
+                        chromName='Y'
+                    else:
+                        chromName=str(chrom)
+                    try:
+                        out=pysam.faidx(wgref,'chr'+chromName+':'+str(start-1-100)+'-'+str(end+100))
+                    except pysam.utils.SamtoolsError:
+                        print('ERROR! File with reference genome is probably corrupted:')
+                        print(wgref)
+                        print(start,end)
+                        print(amplToStartCoord)
+                        print(curRegionName)
+                        exit(52)
                     lines=out.split('\n')
                     if lines[1]=='':
                         print('ERROR! Extracted sequence has no length')
@@ -3144,8 +3221,8 @@ else:
             if len(regionsWithoutPrimers)>0:
                 regionsWithoutPrimersCounter=Counter(regionsWithoutPrimers)
                 if 3 in regionsWithoutPrimersCounter.values():
-                    print(' # WARNING! For',list(regionsWithoutPrimersCounter.values()).count(3),'amplicons external primers were not designed! Try less stringent parameters.')
-                    logger.warn(' # WARNING! For '+str(list(regionsWithoutPrimersCounter.values()).count(3))+' amplicons external primers were not designed! Try less stringent parameters.')
+                    print(' # WARNING! For',list(regionsWithoutPrimersCounter.values()).count(3),'amplicon(s) external primers were not designed! Try less stringent parameters.')
+                    logger.warn(' # WARNING! For '+str(list(regionsWithoutPrimersCounter.values()).count(3))+' amplicon(s) external primers were not designed! Try less stringent parameters.')
                     for regionWithoutPrimer,value in sorted(regionsWithoutPrimersCounter.items(),key=itemgetter(1),reverse=True):
                         if value<3:
                             break
@@ -3158,6 +3235,9 @@ else:
             logger.info(' # Number of designed external primers: '+str(externalPrimersNum))
             p.close()
             p.join()
+            writeDraftPrimers(extPrimersInfo,
+                              args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers.xls',
+                              external=True)
             # Analyzing external primers specificity        
             if args.doBlast:
                 print('\nAnalyzing external primers for their specificity...')
@@ -3167,6 +3247,11 @@ else:
                                                                                     args.maxNonSpecLen,args.maxPrimerNonspec,True,str(i+1))
                 print(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
                 logger.info(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
+                # Write primers that left after filtering by specificity
+                writeDraftPrimers(extPrimersInfo,
+                                  args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_specificity.xls',
+                                  goodPrimers=specificPrimers,
+                                  external=True)
             # Check external primers for covering high-frequent SNPs
             if args.snps:
                 print('Analyzing external primers for covering high-frequent SNPs...')
@@ -3350,3 +3435,4 @@ else:
 # write to README about numpy
 # make function that writes list of unspecific products into file
 # make function that reads list of unspecific products from file
+# add arguments which will get chromosome numbers that match some chromosomes as letters (e.g. X - 23; Y - 24) for other organisms
