@@ -80,11 +80,23 @@ def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs
     if targetGene not in codons.keys() and targetGene not in exons.keys():
         for exonNum,subf in mRNA.items():
             if exonNum+1!=1 and exonNum+1!=len(mRNA):
-                resultFile.write('chr'+chrs[targetGene]+'\t'+str(subf[0]+1-intronSize)+'\t'+str(subf[1]+intronSize)+'\t'+targetGene+'\n')
+                resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                            str(subf[0]+1-intronSize),
+                                            str(subf[1]+intronSize),
+                                            targetGene,
+                                            '1','B','NotW'])+'\n')
             elif (exonNum+1==1 and subf[2]>0) or (exonNum+1==len(mRNA) and subf[2]<0):
-                resultFile.write('chr'+chrs[targetGene]+'\t'+str(subf[0]+1)+'\t'+str(subf[1]+intronSize)+'\t'+targetGene+'\n')
+                resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                            str(subf[0]+1),
+                                            str(subf[1]+intronSize),
+                                            targetGene,
+                                            '1','B','NotW'])+'\n')
             elif (exonNum+1==1 and subf[2]<0) or (exonNum+1==len(mRNA) and subf[2]>0):
-                resultFile.write('chr'+chrs[targetGene]+'\t'+str(subf[0]+1-intronSize)+'\t'+str(subf[1])+'\t'+targetGene+'\n')
+                resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                            str(subf[0]+1-intronSize),
+                                            str(subf[1]),
+                                            targetGene,
+                                            '1','B','NotW'])+'\n')
             else:
                 print('ERROR: Unknown variant of exon number and gene strand!')
                 print(mRNA)
@@ -131,31 +143,79 @@ def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs
             if exNum1==exNum2:
                 if list(mRNA.values())[0][2]==-1:
                     try:
-                        resultFile.write('chr'+chrs[targetGene]+'\t'+str(mRNA[exNum2][1]-fromStart2)+'\t'+str(mRNA[exNum1][1]-fromStart1)+'\t'+targetGene+'\n')
+                        resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                                    str(mRNA[exNum2][1]-fromStart2),
+                                                    str(mRNA[exNum1][1]-fromStart1),
+                                                    targetGene,
+                                                    '1','B','NotW'])+'\n')
                     except KeyError:
                         print('ERROR!',exNum1,exNum2)
                         print(mRNA)
                         exit(1)
                 else:
-                    resultFile.write('chr'+chrs[targetGene]+'\t'+str(mRNA[exNum1][0]+1+fromStart1)+'\t'+str(mRNA[exNum2][0]+1+fromStart2)+'\t'+targetGene+'\n')
+                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                                str(mRNA[exNum1][0]+1+fromStart1),
+                                                str(mRNA[exNum2][0]+1+fromStart2),
+                                                targetGene,
+                                                '1','B','NotW'])+'\n')
             elif exNum2-exNum1==1:
                 if list(mRNA.values())[0][2]==-1:
-                    resultFile.write('chr'+chrs[targetGene]+'\t'+str(mRNA[exNum1][0]+1)+'\t'+str(mRNA[exNum1][1]-fromStart1)+'\t'+targetGene+'\n')
-                    resultFile.write('chr'+chrs[targetGene]+'\t'+str(mRNA[exNum2][1]-fromStart2)+'\t'+str(mRNA[exNum2][1])+'\t'+targetGene+'\n')
+                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                                str(mRNA[exNum1][0]+1),
+                                                str(mRNA[exNum1][1]-fromStart1),
+                                                targetGene,
+                                                '1','B','NotW'])+'\n')
+                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                                str(mRNA[exNum2][1]-fromStart2),
+                                                str(mRNA[exNum2][1]),
+                                                targetGene,
+                                                '1','B','NotW'])+'\n')
                 else:
-                    resultFile.write('chr'+chrs[targetGene]+'\t'+str(mRNA[exNum1][0]+1+fromStart1)+'\t'+str(mRNA[exNum1][1])+'\t'+targetGene+'\n')
-                    resultFile.write('chr'+chrs[targetGene]+'\t'+str(mRNA[exNum2][0]+1)+'\t'+str(mRNA[exNum2][0]+1+fromStart2)+'\t'+targetGene+'\n')
+                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                                str(mRNA[exNum1][0]+1+fromStart1),
+                                                str(mRNA[exNum1][1]),
+                                                targetGene,
+                                                '1','B','NotW'])+'\n')
+                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                                str(mRNA[exNum2][0]+1),
+                                                str(mRNA[exNum2][0]+1+fromStart2),
+                                                targetGene,
+                                                '1','B','NotW'])+'\n')
             else:
                 if list(mRNA.values())[0][2]==-1:
-                    resultFile.write('chr'+chrs[targetGene]+'\t'+str(mRNA[exNum1][0]+1)+'\t'+str(mRNA[exNum1][1]-fromStart1)+'\t'+targetGene+'\n')
+                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                                str(mRNA[exNum1][0]+1),
+                                                str(mRNA[exNum1][1]-fromStart1),
+                                                targetGene,
+                                                '1','B','NotW'])+'\n')
                     for j in range(exNum1+1,exNum2):
-                        resultFile.write('chr'+chrs[targetGene]+'\t'+str(mRNA[j][0]+1)+'\t'+str(mRNA[j][1])+'\t'+targetGene+'\n')
-                    resultFile.write('chr'+chrs[targetGene]+'\t'+str(mRNA[exNum2][1]-fromStart2)+'\t'+str(mRNA[exNum2][1])+'\t'+targetGene+'\n')
+                        resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                                    str(mRNA[j][0]+1),
+                                                    str(mRNA[j][1]),
+                                                    targetGene,
+                                                    '1','B','NotW'])+'\n')
+                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                                str(mRNA[exNum2][1]-fromStart2),
+                                                str(mRNA[exNum2][1]),
+                                                targetGene,
+                                                '1','B','NotW'])+'\n')
                 else:
-                    resultFile.write('chr'+chrs[targetGene]+'\t'+str(mRNA[exNum1][0]+1+fromStart1)+'\t'+str(mRNA[exNum1][1])+'\t'+targetGene+'\n')
+                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                                str(mRNA[exNum1][0]+1+fromStart1),
+                                                str(mRNA[exNum1][1]),
+                                                targetGene,
+                                                '1','B','NotW'])+'\n')
                     for j in range(exNum1+1,exNum2):
-                        resultFile.write('chr'+chrs[targetGene]+'\t'+str(mRNA[j][0]+1)+'\t'+str(mRNA[j][1])+'\t'+targetGene+'\n')
-                    resultFile.write('chr'+chrs[targetGene]+'\t'+str(mRNA[exNum2][0]+1)+'\t'+str(mRNA[exNum2][0]+1+fromStart2)+'\t'+targetGene+'\n')
+                        resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                                    str(mRNA[j][0]+1),
+                                                    str(mRNA[j][1]),
+                                                    targetGene,
+                                                    '1','B','NotW'])+'\n')
+                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                                str(mRNA[exNum2][0]+1),
+                                                str(mRNA[exNum2][0]+1+fromStart2),
+                                                targetGene,
+                                                '1','B','NotW'])+'\n')
     elif targetGene in exons.keys():
         for exRange in exons[targetGene]:
 ##            print(mRNA)
@@ -165,7 +225,12 @@ def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs
                     print('In the first case, use parameter -noncoding. In the second one, correct the mistake')
                     exit(1)
                 subf=mRNA[exonNum]
-                resultFile.write('chr'+chrs[targetGene]+'\t'+str(subf[0]+1)+'\t'+str(subf[1])+'\t'+'_'.join([targetGene,str(exonNum+1)])+'\n')
+                resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                                            str(subf[0]+1),
+                                            str(subf[1]),
+                                            '_'.join([targetGene,
+                                                      str(exonNum+1)]),
+                                            '1','B','NotW'])+'\n')
 
 # Section of reading arguments
 parser=argparse.ArgumentParser(description='This script takes names of genes '
