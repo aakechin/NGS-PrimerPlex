@@ -3428,11 +3428,8 @@ else:
         wbw.close()
         print()
         logger.info('\n')
-##wbw.close()
-
 
 # TODO:
-# write to README about numpy
 # make function that writes list of unspecific products into file
 # make function that reads list of unspecific products from file
 # add arguments which will get chromosome numbers that match some chromosomes as letters (e.g. X - 23; Y - 24) for other organisms
