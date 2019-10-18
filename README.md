@@ -20,7 +20,7 @@ You will be in the main image directory, where you can find folders with all nec
 ```
 cd NGS-PrimerPlex/ 
 gunzip hg19/ucsc.hg19*
-python3 getGeneRegions.py -glf example_gene_list_file.txt -ref hg19/ -rf example_gene_list.regions.csv 
+python3 getGeneRegions.py -glf example_gene_list_file.txt -ref hg19/ -rf example_gene_list_file.regions.csv 
 python3 NGS_primerplex.py -regions example_gene_list_file.regions.csv -ref hg19/ucsc.hg19.fasta -blast -snps -dbsnp hg19/common_all_20180423_hg19.vcf.gz
 ```
 This will give you primers that could be designed with the default parameters. The default parameters are defined in such a way that a user can surely obtain designed primers for the example. For a subsequent use of the program, we recommend to use more stringent parameters. Then, you can use generated file with draft primers as -draft argument and defining less strict parameters for primer design.
