@@ -58,10 +58,11 @@ All of the Python-scripts listed above work under Python3+ and require the follo
 * xlrd
 * xlsxwriter
 * networkx (version==1.11, newer versions has different sintaxis)
+* numpy
 
 They can be installed with pip:
 
-`sudo pip3 install biopython argparse primer3-py logging pysam xlrd xlsxwriter "networkx==1.11"`
+`sudo pip3 install biopython argparse primer3-py logging pysam xlrd xlsxwriter "networkx==1.11" numpy`
 
 Also, for searching non-target primer hybridization, it uses BWA, so you need to install it with e.g.:
 
