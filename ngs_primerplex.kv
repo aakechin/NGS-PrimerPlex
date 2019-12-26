@@ -1,0 +1,1646 @@
+ScreenManager:
+    id: screen_manager
+    MenuScreen:
+        id: menu_screen
+        name: 'MenuScreen'
+        manager: 'screen_manager'
+    SettingsScreen:
+        id: settings
+        name: 'SettingsScreen'
+        manager: 'screen_manager'
+    ExtractRegions: 
+        id: extract_regions
+        name: 'ExtractRegions'
+        manager: 'screen_manager'
+    DesignPrimers:
+        id: design_primers
+        name: 'DesignPrimers'
+        manager: 'screen_manager'
+    AddAdapters:
+        id: add_adapters
+        name: 'AddAdapters'
+        manager: 'screen_manager'
+
+<MenuScreen>:
+    id:menu_screen
+    BoxLayout:
+        orientation:'vertical'
+        spacing:40
+        padding:(10,5,10,10)
+        canvas:
+            Color:
+                rgba:0.8,0.8,0.8,1
+            Rectangle:
+                pos:self.pos
+                size:self.size
+        BoxLayout:
+            orientation:'vertical'
+            size_hint:1,0.05
+            BoxLayout:
+                orientation:'horizontal'
+                spacing:20
+                size_hint:1,1
+                Button:
+                    text:'Settings'
+                    size_hint:0.2,1
+                    pos_hint:{'x':0,'y':0}
+                    on_press:app.root.current='SettingsScreen'
+                Button:
+                    id:download_button
+                    text:'Download NGS-PrimerPlex'
+                    size_hint:0.4,1
+                    on_press:menu_screen.download_ngs_primerplex()
+                Button:
+                    id:prepare_ref_button
+                    text:'Prepare hg19 reference'
+                    size_hint:0.4,1
+                    on_press:menu_screen.prepare_reference()
+            BoxLayout:
+                orientation:'horizontal'
+                spacing:20
+                size_hint:1,0.1
+                Label:
+                    size_hint:0.2,1
+                    color:0,0,0,1
+                    font_size:18
+                Label:
+                    id:download_status
+                    size_hint:0.4,1
+                    color:0,0,0,1
+                    font_size:18
+                Label:
+                    id:prepare_ref_status
+                    size_hint:0.4,1
+                    color:0,0,0,1
+                    font_size:18
+        Button:
+            id:extract_regions_menu_button
+            canvas.before:
+                Color:
+                    rgba:0,0,1,1
+                Rectangle:
+                    pos:self.pos
+                    size:self.size
+            bold:True
+            background_normal:''
+            background_color:0.15,0.35,0.54,1
+            text:'Extract regions'
+            size_hint:0.5,0.3
+            pos_hint:{'x':0.25,'y':0}
+            on_press:app.root.current='ExtractRegions'
+        Button:
+            id:design_primers_menu_button
+            canvas.before:
+                Color:
+                    rgba:0,0,1,1
+                Rectangle:
+                    pos:self.pos
+                    size:self.size
+            bold:True
+            background_normal:''
+            background_color:0.15,0.35,0.54,1
+            text:'Design primers'
+            size_hint:0.5,0.3
+            pos_hint:{'x':0.25,'y':0}
+            on_press:app.root.current='DesignPrimers'
+        Button:
+            id:add_adapters_menu_button
+            canvas.before:
+                Color:
+                    rgba:0,0,1,1
+                Rectangle:
+                    pos:self.pos
+                    size:self.size
+            bold:True
+            background_normal:''
+            background_color:0.15,0.35,0.54,1
+            text:'Add adapters'
+            size_hint:0.5,0.3
+            pos_hint:{'x':0.25,'y':0}
+            on_press:app.root.current='AddAdapters'
+
+<SettingsScreen>:
+    id:settings
+    BoxLayout:
+        orientation:'vertical'
+        canvas:
+            Color:
+                rgba:0.8,0.8,0.8,1
+            Rectangle:
+                pos:self.pos
+                size:self.size
+        # All parts of settings
+        BoxLayout:
+            orientation:'horizontal'
+            padding:(10,10,10,0)
+            spacing:20
+            # Amplicon and primer settings
+            BoxLayout:
+                orientation:'vertical'
+                size_hint:0.33,1
+                Label:
+                    text:'Amplicon and primer settings'
+                    size_hint:1,1
+                    color:0,0,0,1
+                    bold:True
+                # Minimal amplicon length
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:'Min. amplicon length, bp'
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:minampllen
+                        text:'100'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Optimal amplicon length
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:'Optimal amplicon length, bp'
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:optampllen
+                        text:'110'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Maximal amplicon length
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:'Max. amplicon length, bp'
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:maxampllen
+                        text:'110'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Minimal primer length
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:'Min. primer length'
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:minprimerlen
+                        text:'16'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Optimal primer length
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:'Optimal primer length'
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:optprimerlen
+                        text:'23'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Maximal primer length
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:'Max. primer length'
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:maxprimerlen
+                        text:'28'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Minimal primer melt
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:'Min. primer melt, '+u'\N{DEGREE SIGN}'+'C'
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:minprimermelt
+                        text:'60'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Optimal primer melt
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:'Optimal primer melt, '+u'\N{DEGREE SIGN}'+'C'
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:optprimermelt
+                        text:'64'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Maximal primer melt
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:'Max. primer melt, '+u'\N{DEGREE SIGN}'+'C'
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:maxprimermelt
+                        text:'68'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Minimal primer GC
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:'Min. primer GC, %'
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:minprimergc
+                        text:'20'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Optimal primer GC
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:'Optimal primer GC, %'
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:optprimergc
+                        text:'40'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Maximal primer GC
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:'Max. primer GC, %'
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:maxprimergc
+                        text:'80'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Minimal primer 3'-end GC
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Min. GC at primer 3'-end"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:minprimerendgc
+                        text:'0'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Optimal primer 3'-end GC
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Opt. GC at primer 3'-end"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:optprimerendgc
+                        text:'2'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Maximal primer 3'-end GC
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Max. GC at primer 3'-end"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:maxprimerendgc
+                        text:'5'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Maximal primer polyN
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:'Max. primer polyN length'
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:maxprimerpolyn
+                        text:'8'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Switch for auto-adjust
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:'Auto-adjust parameters'
+                        color:0,0,0,1
+                        size_hint:0.8,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    Switch:
+                        id:autoadjust
+                        size_hint:0.2,1
+                        active:False
+                        pos_hint:{'x':0,'y':0}
+            # Four groups:
+            # - Interaction inside one pair
+            # - NonTargets
+            # - SNPs
+            # - Embedded PCR
+            BoxLayout:
+                orientation:'vertical'
+                size_hint:0.33,1
+                padding:(10,0,0,0)
+                canvas.before:
+                    Color:
+                        rgba:0.5,0.5,0.5,1
+                    Line:
+                        width: 1
+                        rectangle: self.x, self.y, 1, self.height
+                Label:
+                    text:'Interactions in one primer pair'
+                    size_hint:1,1
+                    color:0,0,0,1
+                    bold:True
+                # Maximal primer complementary end Th
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Max. primer dimer Th with hybr. 3'-end"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:maxprimercomplendth
+                        text:'25'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Maximal primer complementary any Th
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Max. primer dimer Th"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:maxprimercomplanyth
+                        text:'35'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Maximal primer hairpin Th
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Max. primer hairpin Th"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:maxprimerhairpinth
+                        text:'40'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Non-target hybridizations
+                Label:
+                    text:'Non-target hybridizations'
+                    size_hint:1,1
+                    color:0,0,0,1
+                    bold:True
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Max. diff. between primer and reference"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:subst
+                        text:'2'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Maximal primer non target hybridizations
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Max. primer non-target sites"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:maxprimernonspec
+                        text:'10000'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Maximal non-target amplicon length to check
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Max. non-target amplicon length"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:maxnonspeclen
+                        text:'200'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # SNPs
+                Label:
+                    text:'Covering SNPs'
+                    size_hint:1,1
+                    color:0,0,0,1
+                    bold:True
+                # Minimal SNP frequency
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Min. SNP frequency, %"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:freq
+                        text:'1'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'float'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Number of nucleotides from 3'-end
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Nucleotides at 3'-end to check for covering SNP"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:nucs
+                        text:'0'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Embedded PCR
+                Label:
+                    text:'Embedded PCR'
+                    size_hint:1,1
+                    color:0,0,0,1
+                    bold:True
+                # Minimal primer shift
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Min. ext. primer shift"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:minprimershift
+                        text:'5'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Optimal external length
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Opt. ext. amplicon length"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:optextampllen
+                        text:'150'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Maximal external length
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Max. ext. amplicon length"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:maxextampllen
+                        text:'150'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+            # Two groups and buttons:
+            # - Multiplexing
+            # - Thermodynamics
+            # - Load
+            # - Save
+            BoxLayout:
+                orientation:'vertical'
+                size_hint:0.33,1
+                padding:(10,0,0,0)
+                canvas.before:
+                    Color:
+                        rgba:0.5,0.5,0.5,1
+                    Line:
+                        width: 1
+                        rectangle: self.x, self.y, 1, self.height
+                Label:
+                    text:'Multiplexing'
+                    size_hint:1,1
+                    color:0,0,0,1
+                    bold:True
+                # Maximal overlap
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Max. overlap of sequenced regions"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:maxoverlap
+                        text:'50'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Primer number to design for 1 locus
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Primer pairs to design for 1 locus"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:primernum1
+                        text:'50'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Tries to get best combination
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Tries number to get best comb."
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:tries
+                        text:'10000'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Return variants number
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Variants number to return"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:returnvariantsnum
+                        text:'10'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Minimal dimer dG1 in multiplexes
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Min. dG with linked 3'-ends"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:minmultdimerdg1
+                        text:'-6'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'float'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Minimal dimer dG2 in multiplexes
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Min. dG without linked 3'-ends"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:minmultdimerdg2
+                        text:'-10'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'float'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Thermodynamical parameters
+                Label:
+                    text:'Thermodynamical parameters'
+                    size_hint:1,1
+                    color:0,0,0,1
+                    bold:True
+                # Monovalent cations
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Conc. of monovalent cations, mM"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:mv
+                        text:'50'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'float'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Divalent cations
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Conc. of divalent cations, mM"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:dv
+                        text:'3'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'float'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # dNTP concentration
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"dNTP concentration, mM"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:dntp
+                        text:'0.8'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'float'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # primer concentration
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"Primer concentration, nM"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:primerconc
+                        text:'250'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'float'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Save button
+                Button:
+                    text:'Save settings'
+                    on_press:settings.show_save()
+                    size_hint_y:None
+                    height:dp(40)
+                # Load button
+                Button:
+                    text:'Load settings'
+                    on_press:settings.show_load()
+                    size_hint_y:None
+                    height:dp(40)
+        Button:
+            text:'< Back to Main menu'
+            on_press:app.root.current='MenuScreen'
+            size_hint_y:None
+            height:dp(40)
+
+<ExtractRegions>:
+    id:extract_regions
+    BoxLayout:
+        orientation:'vertical'
+        canvas.before:
+            Color:
+                rgba:0.8,0.8,0.8,1
+            Rectangle:
+                pos:self.pos
+                size:self.size
+        BoxLayout:
+            orientation:'horizontal'
+            size_hint:1,1
+            spacing:20
+            BoxLayout:
+                orientation:'vertical'
+                spacing:20
+                size_hint:0.4,1
+                padding:(10,10,0,0)
+                # Table with genes and their parts
+                GridLayout:
+                    id:genes_table
+                    canvas.before:
+                        Color:
+                            rgba:0.5,0.5,0.5,1
+                        Rectangle:
+                            pos:self.pos
+                            size:self.size
+                        Line:
+                            width: 2
+                            rectangle: self.x, self.y, self.width, self.height
+                    spacing:2
+                    cols:3
+                    rows:2
+                    size_hint:1,0.2
+                    # Label for gene column
+                    Label:
+                        canvas.before:
+                            Color:
+                                rgba:0.8,0.8,0.8,1
+                            Rectangle:
+                                pos:self.pos
+                                size:self.size
+                        text:'Gene'
+                        bold:True
+                        color:0,0,0,1
+                    # Label for exons column
+                    Label:
+                        canvas.before:
+                            Color:
+                                rgba:0.8,0.8,0.8,1
+                            Rectangle:
+                                pos:self.pos
+                                size:self.size
+                        text:'Exons'
+                        bold:True
+                        color:0,0,0,1
+                    # Label for codons column
+                    Label:
+                        canvas.before:
+                            Color:
+                                rgba:0.8,0.8,0.8,1
+                            Rectangle:
+                                pos:self.pos
+                                size:self.size
+                        text:'Codons'
+                        bold:True
+                        color:0,0,0,1
+                    TextInput:
+                        multiline:False
+                        valign:'top'
+                        padding:(5,2,0,0)
+                        write_tab: False
+                    TextInput:
+                        multiline:False
+                        valign:'top'
+                        padding:(5,2,0,0)
+                        write_tab: False
+                    TextInput:
+                        multiline:False
+                        valign:'top'
+                        padding:(5,2,0,0)
+                        write_tab: False
+                Button:
+                    text:'Add gene'
+                    size_hint:0.5,0.1
+                    pos_hint:{'x':0.25,'y':0}
+                    on_press:extract_regions.add_gene()
+                Label:
+                    id:genes_table_empty_label
+                    size_hint:1,0.7
+            BoxLayout:
+                orientation:'vertical'
+                size_hint:0.6,1
+                padding:(0,10,10,0)
+                spacing:5
+                canvas.before:
+                    Color:
+                        rgba:0.5,0.5,0.5,1
+                    Line:
+                        width: 2
+                        rectangle: self.x-10, self.y, 2, self.height
+                # Choosing directory with genbank-files of reference genome
+                Label:
+                    text:'Choose directory with genbank-files for each chromosome\nor leave it as it is for using human hg19:'
+                    color:0,0,0,1
+                    size_hint:1,0.1
+                    halign:'center'
+                    valign:'top'
+                    text_size:self.size
+                BoxLayout:
+                    orientation:'horizontal'
+                    size_hint:1,0.09
+                    spacing:10
+                    TextInput:
+                        id:genbank_directory
+                        text:'<Chosen directory with GenBank-files>'
+                        size_hint:0.7,1
+                        background_color:1,1,1,1
+                        color:0,0,0,1
+                        foreground_color:0,0,0,1
+                        disabled_foreground_color:0,0,0,1
+                        hint_text_color:0,0,0,1
+                        multiline:True
+                        readonly:False
+                        write_tab: False
+                    Button:
+                        size_hint:0.3,1
+                        text:'Browse'
+                        on_press: extract_regions.show_load('Choose directory with GenBank-files')
+                # Choosing reference genome
+                Label:
+                    text:'Choose reference genome FASTA-file or leave it as it is to use hg19:'
+                    color:0,0,0,1
+                    size_hint:1,0.1
+                    halign:'center'
+                    valign:'bottom'
+                    text_size:self.size
+                BoxLayout:
+                    orientation:'horizontal'
+                    size_hint:1,0.12
+                    spacing:10
+                    TextInput:
+                        id:wgref_file
+                        text:'<Chosen reference genome FASTA-file>'
+                        size_hint:0.7,1
+                        background_color:1,1,1,1
+                        color:0,0,0,1
+                        foreground_color:0,0,0,1
+                        disabled_foreground_color:0,0,0,1
+                        hint_text_color:0,0,0,1
+                        multiline:True
+                        readonly:False
+                        write_tab: False
+                    Button:
+                        size_hint:0.3,1
+                        text:'Browse'
+                        on_press: extract_regions.show_load('Choose FASTA-file with reference genome')
+                # Intron size
+                BoxLayout:
+                    size_hint:0.7,0.07
+                    orientation:'horizontal'
+                    Label:
+                        text:'Intron size to include:'
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:intron_size_text_input
+                        text:'2'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
+                # Switch for non-coding exons
+                BoxLayout:
+                    size_hint:0.7,0.07
+                    orientation:'horizontal'
+                    Label:
+                        text:'Include noncoding exons'
+                        color:0,0,0,1
+                        size_hint:0.8,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    Switch:
+                        id:noncoding_switch
+                        size_hint:0.2,1
+                        active:False
+                        pos_hint:{'x':0,'y':0}
+                # Choosing output-file
+                Label:
+                    text:'Choose file for output:'
+                    color:0,0,0,1
+                    size_hint:1,0.07
+                    halign:'center'
+                    valign:'bottom'
+                BoxLayout:
+                    orientation:'horizontal'
+                    size_hint:1,0.09
+                    spacing:10
+                    TextInput:
+                        id:output_file
+                        text:'<Chosen output-file>'
+                        size_hint:0.7,1
+                        background_color:1,1,1,1
+                        color:0,0,0,1
+                        foreground_color:0,0,0,1
+                        disabled_foreground_color:0,0,0,1
+                        hint_text_color:0,0,0,1
+                        multiline:True
+                        readonly:False
+                        write_tab: False
+                    Button:
+                        size_hint:0.3,1
+                        text:'Browse'
+                        on_press: extract_regions.show_save('Choose file for output')
+                Button:
+                    canvas.before:
+                        Color:
+                            rgba:0,0,1,1
+                        Rectangle:
+                            pos:self.pos
+                            size:self.size
+                    text:'Extract regions'
+                    bold:True
+                    background_normal:''
+                    background_color:0.15,0.35,0.54,1
+                    size_hint:0.5,0.08
+                    pos_hint:{'x':0.25,'y':0.5}
+                    on_press: extract_regions.run_extraction()
+                # Logging output
+                TextInput:
+                    id:log_text_input
+                    text:'Here will be log output...'
+                    size_hint:1,0.32
+                    background_color:1,1,1,1
+                    color:0,0,0,1
+                    foreground_color:0,0,0,1
+                    disabled_foreground_color:0,0,0,1
+                    hint_text_color:0,0,0,1
+                    multiline:True
+                    readonly:True
+                    write_tab: False
+        Button:
+            text:'< Back to Main menu'
+            on_press:app.root.current='MenuScreen'
+            size_hint_y:None
+            height:dp(40)
+
+<DesignPrimers>:
+    id:design_primers
+    BoxLayout:
+        orientation:'vertical'
+        canvas:
+            Color:
+                rgba:0.8,0.8,0.8,1
+            Rectangle:
+                pos:self.pos
+                size:self.size
+        BoxLayout:
+            orientation:'vertical'
+            spacing:5
+            padding:(10,10,10,10)
+            # Regions file
+            BoxLayout:
+                orientation:'horizontal'
+                size_hint:1,0.1
+                spacing:10
+                TextInput:
+                    id:regions_file
+                    text:'<Choose file with target genome regions>'
+                    size_hint:0.7,1
+                    background_color:1,1,1,1
+                    color:0,0,0,1
+                    multiline:True
+                    readonly:False
+                    write_tab: False
+                Button:
+                    size_hint:0.3,1
+                    text:'Browse'
+                    on_press:design_primers.show_load('Choose file with target genome regions')
+            # Draft primers
+            BoxLayout:
+                orientation:'horizontal'
+                size_hint:1,0.1
+                spacing:10
+                TextInput:
+                    id:draft_file
+                    text:'<Choose file with draft list of primers>'
+                    size_hint:0.7,1
+                    background_color:1,1,1,1
+                    color:0,0,0,1
+                    multiline:True
+                    readonly:False
+                    write_tab: False
+                Button:
+                    size_hint:0.3,1
+                    text:'Browse'
+                    on_press: design_primers.show_load('Choose file with draft list of primers')
+            # Primers file for embedded PCR
+            BoxLayout:
+                orientation:'horizontal'
+                size_hint:1,0.1
+                spacing:10
+                TextInput:
+                    id:primers_file
+                    text:'<Choose file with designed internal primers>'
+                    size_hint:0.7,1
+                    background_color:1,1,1,1
+                    color:0,0,0,1
+                    multiline:True
+                    readonly:False
+                    write_tab: False
+                Button:
+                    size_hint:0.3,1
+                    text:'Browse'
+                    on_press: design_primers.show_load('Choose file with designed internal primers')
+            # Choosing reference genome
+            BoxLayout:
+                orientation:'horizontal'
+                size_hint:1,0.1
+                spacing:10
+                TextInput:
+                    id:wgref_file
+                    text:'<Choose reference genome FASTA-file or leave it as it is to use hg19>'
+                    size_hint:0.7,1
+                    background_color:1,1,1,1
+                    color:0,0,0,1
+                    foreground_color:0,0,0,1
+                    disabled_foreground_color:0,0,0,1
+                    hint_text_color:0,0,0,1
+                    multiline:True
+                    readonly:False
+                    write_tab: False
+                Button:
+                    size_hint:0.3,1
+                    text:'Browse'
+                    on_press: design_primers.show_load('Choose FASTA-file with reference genome')
+            # Choosing dbSNP-file
+            BoxLayout:
+                orientation:'horizontal'
+                size_hint:1,0.1
+                spacing:10
+                TextInput:
+                    id:snps_file
+                    text:'<To check for covering SNPs choose VCF-file with SNPs>'
+                    size_hint:0.7,1
+                    background_color:1,1,1,1
+                    color:0,0,0,1
+                    foreground_color:0,0,0,1
+                    disabled_foreground_color:0,0,0,1
+                    hint_text_color:0,0,0,1
+                    multiline:True
+                    readonly:False
+                    write_tab: False
+                Button:
+                    size_hint:0.3,1
+                    text:'Browse'
+                    on_press: design_primers.show_load('Choose VCF-file with SNPs')
+            BoxLayout:
+                orientation:'horizontal'
+                spacing:10
+                size_hint:1,0.8
+                BoxLayout:
+                    orientation:'vertical'
+                    size_hint:0.7,1
+                    spacing:5
+                    # Switch for embedded PCR
+                    BoxLayout:
+                        size_hint:1,0.2
+                        orientation:'horizontal'
+                        Label:
+                            text:'Embedded PCR'
+                            color:0,0,0,1
+                            size_hint:0.8,1
+                            halign:'left'
+                            valign:'center'
+                            text_size:self.size
+                        Switch:
+                            id:embedded_switch
+                            size_hint:0.2,1
+                            active:False
+                            pos_hint:{'x':0,'y':0}
+                    # Switch for skipping uncovered
+                    BoxLayout:
+                        size_hint:1,0.2
+                        orientation:'horizontal'
+                        Label:
+                            text:'Skip uncovered regions'
+                            color:0,0,0,1
+                            size_hint:0.8,1
+                            halign:'left'
+                            valign:'center'
+                            text_size:self.size
+                        Switch:
+                            id:skip_switch
+                            size_hint:0.2,1
+                            active:False
+                            pos_hint:{'x':0,'y':0}
+                    # Switch for non-targets
+                    BoxLayout:
+                        size_hint:1,0.2
+                        orientation:'horizontal'
+                        Label:
+                            text:'Check for non-target hybridization'
+                            color:0,0,0,1
+                            size_hint:0.8,1
+                            halign:'left'
+                            valign:'center'
+                            text_size:self.size
+                        Switch:
+                            id:nontargets_switch
+                            size_hint:0.2,1
+                            active:True
+                            pos_hint:{'x':0,'y':0}
+                    # Switch for SNPs
+                    BoxLayout:
+                        size_hint:1,0.2
+                        orientation:'horizontal'
+                        Label:
+                            text:'Check for covering SNPs'
+                            color:0,0,0,1
+                            size_hint:0.8,1
+                            halign:'left'
+                            valign:'center'
+                            text_size:self.size
+                        Switch:
+                            id:snps_switch
+                            size_hint:0.2,1
+                            active:True
+                            pos_hint:{'x':0,'y':0}
+                    # Number of threads
+                    BoxLayout:
+                        size_hint:1,0.2
+                        orientation:'horizontal'
+                        Label:
+                            text:'Number of threads'
+                            color:0,0,0,1
+                            size_hint:0.77,1
+                            halign:'left'
+                            valign:'center'
+                            text_size:self.size
+                        TextInput:
+                            id:threads_text_input
+                            text:'2'
+                            hint_text_color:0,0,0,1
+                            size_hint:0.23,1
+                            input_filter:'int'
+                            pos_hint:{'x':0,'y':0}
+                            write_tab: False
+                    # Run name
+                    BoxLayout:
+                        size_hint:1,0.2
+                        orientation:'horizontal'
+                        Label:
+                            text:'Run name'
+                            color:0,0,0,1
+                            size_hint:0.8,1
+                            halign:'left'
+                            valign:'center'
+                            text_size:self.size
+                        TextInput:
+                            id:run_name_text_input
+                            text:'run1'
+                            hint_text_color:0,0,0,1
+                            size_hint:0.2,1
+                            pos_hint:{'x':0,'y':0}
+                            write_tab: False
+                    # Left adapter
+                    BoxLayout:
+                        size_hint:1,0.2
+                        orientation:'horizontal'
+                        Label:
+                            text:'Left adapter'
+                            color:0,0,0,1
+                            size_hint:0.4,1
+                            halign:'left'
+                            valign:'center'
+                            text_size:self.size
+                        TextInput:
+                            id:left_adapter
+                            text:''
+                            hint_text_color:0,0,0,1
+                            size_hint:0.6,1
+                            readonly:False
+                            pos_hint:{'x':0,'y':0}
+                            write_tab: False
+                    # Right adapter
+                    BoxLayout:
+                        size_hint:1,0.2
+                        orientation:'horizontal'
+                        Label:
+                            text:'Right adapter'
+                            color:0,0,0,1
+                            size_hint:0.4,1
+                            halign:'left'
+                            valign:'center'
+                            text_size:self.size
+                        TextInput:
+                            id:right_adapter
+                            text:''
+                            hint_text_color:0,0,0,1
+                            size_hint:0.6,1
+                            readonly:False
+                            pos_hint:{'x':0.6,'y':0}
+                            write_tab: False
+                # Logging
+                TextInput:
+                    size_hint:0.3,1
+                    id:design_primers_log
+                    text:'Here will be log output...'
+                    multiline:True
+                    readonly:True
+                    font_size:14
+            BoxLayout:
+                orientation:'horizontal'
+                size_hint:1,0.08
+                # Empty label
+                Label:
+                    size_hint:0.25,1
+                # Run button                        
+                Button:
+                    id:primer_design_start_button
+                    canvas.before:
+                        Color:
+                            rgba:0,0,1,1
+                        Rectangle:
+                            pos:self.pos
+                            size:self.size
+                    text:'Start'
+                    bold:True
+                    disabled:False
+                    background_normal:''
+                    background_color:0.15,0.35,0.54,1
+                    size_hint:0.25,1
+                    pos_hint:{'x':0.25,'y':0}
+                    on_press:design_primers.start_design()
+                # Stop button                        
+                Button:
+                    id:primer_design_stop_button
+                    canvas.before:
+                        Color:
+                            rgba:0,0,1,1
+                        Rectangle:
+                            pos:self.pos
+                            size:self.size
+                    text:'Stop'
+                    bold:True
+                    disabled:True
+                    background_normal:''
+                    background_color:0.15,0.35,0.54,1
+                    size_hint:0.25,1
+                    pos_hint:{'x':0.5,'y':0}
+                    on_press:design_primers.stop_design()
+                # Empty label
+                Label:
+                    size_hint:0.25,1
+        Button:
+            text:'< Back to Main menu'
+            on_press:app.root.current='MenuScreen'
+            size_hint_y:None
+            height:dp(40)
+
+<AddAdapters>:
+    id:add_adapters
+    BoxLayout:
+        orientation:'vertical'
+        padding:(10,10,10,10)
+        canvas.before:
+            Color:
+                rgba:0.8,0.8,0.8,1
+            Rectangle:
+                pos:self.pos
+                size:self.size
+        Label:
+            size_hint:1,0.1
+            halign:'left'
+            valign:'middle'
+            color:0,0,0,1
+            foreground_color:0,0,0,1
+            text:'Choose file with primers designed by NGS-PrimerPlex and file with adapters:'
+        BoxLayout:
+            orientation:'horizontal'
+            size_hint:1,0.2
+            spacing:10
+            # Part with written file names
+            BoxLayout:
+                id:browse_text_input
+                orientation:'vertical'
+                size_hint_x:0.7
+                size_hint_y:1
+                TextInput:
+                    id:filename_text_input_primers
+                    text:'<Chosen file with primers>'
+                    size_hint:1,0.5
+                    background_color:1,1,1,1
+                    color:0,0,0,1
+                    foreground_color:0,0,0,1
+                    disabled_foreground_color:0,0,0,1
+                    hint_text_color:0,0,0,1
+                    multiline:True
+                    readonly:False
+                    write_tab: False
+                TextInput:
+                    id:filename_text_input_adapters
+                    text:'<Chosen file with adapters>'
+                    size_hint:1,0.5
+                    background_color:1,1,1,1
+                    color:0,0,0,1
+                    foreground_color:0,0,0,1
+                    disabled_foreground_color:0,0,0,1
+                    hint_text_color:0,0,0,1
+                    multiline:True
+                    readonly:False
+                    write_tab: False
+            # Part with buttons
+            BoxLayout:
+                id:browse_button_box
+                orientation:'vertical'
+                size_hint:0.3,1
+                Button:
+                    size_hint:1,0.5
+                    text:'Browse'
+                    on_press: add_adapters.show_load_primers('Choose file with primers')
+                Button:
+                    size_hint:1,0.5
+                    text:'Browse'
+                    on_press: add_adapters.show_load_adapters('Choose file with adapters')
+        # Progress bar
+        CircularProgressBar:
+            id:add_primers_progress_bar
+            size_hint:1,0.3
+            max:100
+            pos:root.width/2,root.height/2
+            widget_size:100
+            thickness:5
+            cap_precision:1
+            value:0
+            pos_hint:{'x':0.43,'y':0}
+        Label:
+            size_hint:1,0.2
+        # Run button                        
+        Button:
+            text:'Add adapters to primers'
+            size_hint:0.5,0.1
+            pos_hint:{'x':0.25,'y':0}
+            min_state_time:0
+            always_release:True
+            on_press:
+                add_adapters.startAdding()
+        Button:
+            text:'< Back to Main menu'
+            on_press:app.root.current='MenuScreen'
+            size_hint:0.5,0.1
+            height:dp(40)
+            pos_hint:{'x':0.25,'y':0}
+
+<LoadDialog>:
+    BoxLayout:
+        size: root.size
+        pos: root.pos
+        orientation: "vertical"
+        FileChooserListView:
+            id: filechooser
+        BoxLayout:
+            size_hint_y: None
+            height: 30
+            Button:
+                text: "Cancel"
+                on_release: root.cancel()
+            Button:
+                text: "Load"
+                on_release: root.load(filechooser.path, filechooser.selection)
+
+<SaveDialog>:
+    text_input: text_input
+    BoxLayout:
+        size: root.size
+        pos: root.pos
+        orientation: "vertical"
+        FileChooserListView:
+            id: filechooser
+            on_selection: text_input.text = self.selection and self.selection[0] or ''
+        TextInput:
+            id: text_input
+            size_hint_y: None
+            height: 30
+            multiline: False
+        BoxLayout:
+            size_hint_y: None
+            height: 30
+            Button:
+                text: "Cancel"
+                on_release: root.cancel()
+            Button:
+                text: "Save"
+                on_release: root.save(filechooser.path, text_input.text)
