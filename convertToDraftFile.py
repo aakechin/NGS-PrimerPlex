@@ -38,3 +38,4 @@ for sheetNum in range(wb.nsheets):
                 row[7],10,row[4]]
         wsw.write_row(i,0,newRow)
 wbw.close()
+print('NGS-PrimerPlex finished!')

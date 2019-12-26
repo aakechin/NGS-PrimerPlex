@@ -5,7 +5,6 @@ thisDir=os.path.dirname(os.path.realpath(__file__))+'/'
 
 parser=argparse.ArgumentParser(description='This script adds tags to primers for NGS')
 parser.add_argument('--input','-in',dest='input',type=str,help='input XLS-file with designed primers')
-##parser.add_argument('--with-additional-names','-names',dest='addNames',action='store_true',help='use this parameter, if input-file contains additional names that you gave your primers manually. They should be inserted before default names')
 parser.add_argument('--tags-file','-tags',dest='tagsFile',type=str,help='text file with tags that we want to add to each primer. Default: "'+thisDir+'kplex_for_primers.txt"',default=thisDir+'kplex_for_primers.txt')
 args=parser.parse_args()
 
@@ -56,3 +55,4 @@ wsw.set_column(1,1,60)
 for i,(name,primer) in enumerate(zip(primerNames,primers)):
     wsw.write_row(i+1,0,[name,primer])
 wbw.close()
+print('NGS-PrimerPlex finished!')
