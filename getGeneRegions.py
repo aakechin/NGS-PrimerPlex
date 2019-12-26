@@ -3,30 +3,158 @@
 
 # Section of importing modules
 from Bio import SeqIO
-from Bio import Entrez as en
 import copy
 import argparse
 import os
+import glob
 import re
 import gzip
+import pysam
 
 # Global variables
-global thisDir
+global thisDir,nameToNum,numToName
 thisDir=os.path.dirname(os.path.realpath(__file__))+'/'
 
 # Section of functions
-def getChrNum(gName,org):
-    h=en.esearch(term=gName+'[Gene Name]',db='gene')
-    r=en.read(h)
-    for i in r['IdList']:
-        h=en.esummary(db='gene',id=i)
-        r2=en.read(h)
-        fName=r2['DocumentSummarySet']['DocumentSummary'][0]['NomenclatureSymbol']
-        fOrg=r2['DocumentSummarySet']['DocumentSummary'][0]['Organism']
-        fSyn=r2['DocumentSummarySet']['DocumentSummary'][0]['NomenclatureSymbol'].split(', ')
-        fChr=r2['DocumentSummarySet']['DocumentSummary'][0]['Chromosome']
-        if fOrg['CommonName']==org and (fName==gName or fName in fSyn):
-            return(fChr)
+def chrToChr(wholeGenomeRef):
+    global nameToNum,numToName
+    nameToNum={}
+    numToName={}
+    try:
+        refFa=pysam.FastaFile(wholeGenomeRef)
+    except OSError:
+        print('ERROR (16)! Reference genome FASTA-file is absent:')
+        print(wholeGenomeRef)
+        print(glob.glob(os.path.dirname(wholeGenomeRef)))
+        exit(16)
+    for i,ch in enumerate(refFa.references):
+        nameToNum[ch]=i+1
+        numToName[i+1]=ch
+    return(nameToNum,numToName)
+
+def getChrNum(geneName,refDir):
+    global nameToNum,numToName
+    if not os.path.exists(refDir+'geneNameToChromosome.csv'):
+        print('WARNING! There was no table for converting gene name into chromosome.')
+        print('It will be created and this process will take some time...')
+        try:
+            geneNameToChromosomes=createGeneNameToChromosomeFile(refDir)
+        except:
+            if os.path.exists(refDir+'geneNameToChromosome.csv'):
+                os.remove(refDir+'geneNameToChromosome.csv')
+            print('ERROR (12)! Table for converting gene name into chromosome could not be created')
+            exit(12)
+        print('Table for converting gene name into chromosomes was created:')
+        print(refDir+'geneNameToChromosome.csv')
+    else:
+        geneNameToChromosomes=readGeneNameToChromosome(refDir+'geneNameToChromosome.csv')
+    if geneName in geneNameToChromosomes.keys():
+        if len(geneNameToChromosomes[geneName])==1:
+            return(next(iter(geneNameToChromosomes[geneName])))
+        else:
+            print('ERROR (13)! The following gene has several locations in genome:')
+            print(geneName)
+            print('Chromosomes: '+', '.join(geneNameToChromosomes[geneName]))
+            exit(13)
+    else:
+        print('ERROR (14)! The following gene was not found in the reference genome:')
+        print(geneName)
+        print('Reference genome location: '+refDir)
+        exit(14)
+
+def readGeneNameToChromosome(fileName):
+    geneNameToChromosomes={}
+    with open(fileName) as file:
+        for string in file:
+            cols=string.replace('\n','').split('\t')
+            geneNameToChromosomes[cols[0]]=set()
+            for chrom in cols[1:]:
+                if chrom!='':
+                    geneNameToChromosomes[cols[0]].add(chrom)
+    return(geneNameToChromosomes)
+
+def createGeneNameToChromosomeFile(refDir):
+    ds=glob.glob(refDir+'*.gb')
+    if len(ds)==0:
+        ds=glob.glob(refDir+'*.gb.gz')
+        if len(ds)==0:
+            print('ERROR (10)! In the defined reference directory '
+                  'there is no GenBank files that starts from chr')
+            print(refDir)
+            exit(10)
+    geneNameToChromosomes={}
+    p=re.compile('(\w+)\.gb')
+    for d in sorted(ds):
+        m=p.findall(os.path.basename(d))
+        if len(m)==0:
+            print('ERROR (11)! The following GenBank-file has incorrect format of name:')
+            print(os.path.basename(d))
+            print('It should have name in the following format: chr1.gb')
+            print('Only chromosome numbers are accepted. Rename e.g. chrX.gb into chr23.gb, chrY.gb into chr24.gb')
+            exit(11)
+        print(os.path.basename(d))
+        chromNumOrName=m[0]
+        try:
+            chromNum=int(chromNumOrName)
+            if int(chromNum) in numToName.keys():
+                chrom=numToName[int(chromNum)]
+            else:
+                print('ERROR (15)! The following GenBank-file has incorrect format of name:')
+                print(os.path.basename(d))
+                print('It should have name in the format of the reference genome FASTA-file, e.g. chr1.gb')
+                print('Or all files can be named with numbers of chromosomes as they are written in the reference genome FASTA-file.')
+                print('In this case rename e.g. for hg19 they will be:')
+                print('chrM - 1.gb')
+                print('chr1 - 2.gb')
+                print('chr2 - 3.gb')
+                print('. . .')
+                print('chrX - 24.gb')
+                print('chrY - 25.gb')
+                exit(15)
+        except:
+            chromName=chromNumOrName
+            if chromName in nameToNum.keys():
+                chrom=chromName
+            else:
+                print('ERROR (9)! The following GenBank-file has incorrect format of name:')
+                print(os.path.basename(d))
+                print('It should have name in the format of the reference genome FASTA-file, e.g. chr1.gb')
+                print('Or all files can be named with numbers of chromosomes as they are written in the reference genome FASTA-file.')
+                print('In this case rename e.g. for hg19 they will be:')
+                print('chrM - 1.gb')
+                print('chr1 - 2.gb')
+                print('chr2 - 3.gb')
+                print('. . .')
+                print('chrX - 24.gb')
+                print('chrY - 25.gb')
+                exit(9)
+        if d[-3:]=='.gz':
+            data=SeqIO.read(gzip.open(d,'rt'),'genbank')
+        else:
+            data=SeqIO.read(d,'genbank')        
+        for f in data.features:
+            if f.type!='gene':
+                continue
+            if 'gene_synonym' in f.qualifiers.keys():
+                synonyms=f.qualifiers['gene_synonym'][0].split('; ')
+            else:
+                synonyms=[]
+            if 'gene' in f.qualifiers.keys():
+                geneName=f.qualifiers['gene'][0]
+                if geneName not in geneNameToChromosomes.keys():
+                    geneNameToChromosomes[geneName]=set()
+                geneNameToChromosomes[geneName].add(chrom)
+                for synonym in synonyms:
+                    if synonym not in geneNameToChromosomes.keys():
+                        geneNameToChromosomes[synonym]=set()
+                    geneNameToChromosomes[synonym].add(chrom)
+    writeGeneNameToChromosomeFile(geneNameToChromosomes,refDir)
+    return(geneNameToChromosomes)
+
+def writeGeneNameToChromosomeFile(geneNameToChromosomes,refDir):
+    with open(refDir+'geneNameToChromosome.csv','w') as file:
+        for geneName,chroms in geneNameToChromosomes.items():
+            file.write('\t'.join([geneName,*chroms])+'\n')
 
 def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs={}):
     # Convert list of exons coordinates to dictionary with exon numbers as keys and coordinates as values
@@ -80,25 +208,25 @@ def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs
     if targetGene not in codons.keys() and targetGene not in exons.keys():
         for exonNum,subf in mRNA.items():
             if exonNum+1!=1 and exonNum+1!=len(mRNA):
-                resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                resultFile.write('\t'.join([chrs[targetGene],
                                             str(subf[0]+1-intronSize),
                                             str(subf[1]+intronSize),
                                             targetGene,
                                             '1','B','NotW'])+'\n')
             elif (exonNum+1==1 and subf[2]>0) or (exonNum+1==len(mRNA) and subf[2]<0):
-                resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                resultFile.write('\t'.join([chrs[targetGene],
                                             str(subf[0]+1),
                                             str(subf[1]+intronSize),
                                             targetGene,
                                             '1','B','NotW'])+'\n')
             elif (exonNum+1==1 and subf[2]<0) or (exonNum+1==len(mRNA) and subf[2]>0):
-                resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                resultFile.write('\t'.join([chrs[targetGene],
                                             str(subf[0]+1-intronSize),
                                             str(subf[1]),
                                             targetGene,
                                             '1','B','NotW'])+'\n')
             else:
-                print('ERROR: Unknown variant of exon number and gene strand!')
+                print('ERROR (1)! Unknown variant of exon number and gene strand!')
                 print(mRNA)
                 print(exonNum+1,subf[2])
                 exit(1)
@@ -135,83 +263,83 @@ def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs
                                 exNum2=j
                         break
             if not exFound:
-                print('ERROR: exon for region '+str(reg)+' of gene '+targetGene+' was not determined correctly')
-                exit(0)
+                print('ERROR (2)! Exon for region '+str(reg)+' of gene '+targetGene+' was not determined correctly')
+                exit(2)
 ##                        print(exNum1,exNum2,fromStart1,fromStart2)
 ##                        print(f.location.parts[exNum1].nofuzzy_end,f.location.parts[exNum2].nofuzzy_start)
             # If exons for the start and for the end of region are equal
             if exNum1==exNum2:
                 if list(mRNA.values())[0][2]==-1:
                     try:
-                        resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                        resultFile.write('\t'.join([chrs[targetGene],
                                                     str(mRNA[exNum2][1]-fromStart2),
                                                     str(mRNA[exNum1][1]-fromStart1),
                                                     targetGene,
                                                     '1','B','NotW'])+'\n')
                     except KeyError:
-                        print('ERROR!',exNum1,exNum2)
+                        print('ERROR (3)!',exNum1,exNum2)
                         print(mRNA)
-                        exit(1)
+                        exit(3)
                 else:
-                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                    resultFile.write('\t'.join([chrs[targetGene],
                                                 str(mRNA[exNum1][0]+1+fromStart1),
                                                 str(mRNA[exNum2][0]+1+fromStart2),
                                                 targetGene,
                                                 '1','B','NotW'])+'\n')
             elif exNum2-exNum1==1:
                 if list(mRNA.values())[0][2]==-1:
-                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                    resultFile.write('\t'.join([chrs[targetGene],
                                                 str(mRNA[exNum1][0]+1),
                                                 str(mRNA[exNum1][1]-fromStart1),
                                                 targetGene,
                                                 '1','B','NotW'])+'\n')
-                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                    resultFile.write('\t'.join([chrs[targetGene],
                                                 str(mRNA[exNum2][1]-fromStart2),
                                                 str(mRNA[exNum2][1]),
                                                 targetGene,
                                                 '1','B','NotW'])+'\n')
                 else:
-                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                    resultFile.write('\t'.join([chrs[targetGene],
                                                 str(mRNA[exNum1][0]+1+fromStart1),
                                                 str(mRNA[exNum1][1]),
                                                 targetGene,
                                                 '1','B','NotW'])+'\n')
-                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                    resultFile.write('\t'.join([chrs[targetGene],
                                                 str(mRNA[exNum2][0]+1),
                                                 str(mRNA[exNum2][0]+1+fromStart2),
                                                 targetGene,
                                                 '1','B','NotW'])+'\n')
             else:
                 if list(mRNA.values())[0][2]==-1:
-                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                    resultFile.write('\t'.join([chrs[targetGene],
                                                 str(mRNA[exNum1][0]+1),
                                                 str(mRNA[exNum1][1]-fromStart1),
                                                 targetGene,
                                                 '1','B','NotW'])+'\n')
                     for j in range(exNum1+1,exNum2):
-                        resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                        resultFile.write('\t'.join([chrs[targetGene],
                                                     str(mRNA[j][0]+1),
                                                     str(mRNA[j][1]),
                                                     targetGene,
                                                     '1','B','NotW'])+'\n')
-                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                    resultFile.write('\t'.join([chrs[targetGene],
                                                 str(mRNA[exNum2][1]-fromStart2),
                                                 str(mRNA[exNum2][1]),
                                                 targetGene,
                                                 '1','B','NotW'])+'\n')
                 else:
-                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                    resultFile.write('\t'.join([chrs[targetGene],
                                                 str(mRNA[exNum1][0]+1+fromStart1),
                                                 str(mRNA[exNum1][1]),
                                                 targetGene,
                                                 '1','B','NotW'])+'\n')
                     for j in range(exNum1+1,exNum2):
-                        resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                        resultFile.write('\t'.join([chrs[targetGene],
                                                     str(mRNA[j][0]+1),
                                                     str(mRNA[j][1]),
                                                     targetGene,
                                                     '1','B','NotW'])+'\n')
-                    resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                    resultFile.write('\t'.join([chrs[targetGene],
                                                 str(mRNA[exNum2][0]+1),
                                                 str(mRNA[exNum2][0]+1+fromStart2),
                                                 targetGene,
@@ -221,11 +349,11 @@ def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs
 ##            print(mRNA)
             for exonNum in range(exRange[0]-1,exRange[1]):
                 if exonNum not in mRNA.keys():
-                    print('ERROR! Exon '+str(exonNum)+' includes noncoding sequences or does not exist.')
+                    print('ERROR (4)! Exon '+str(exonNum)+' includes noncoding sequences or does not exist.')
                     print('In the first case, use parameter -noncoding. In the second one, correct the mistake')
-                    exit(1)
+                    exit(4)
                 subf=mRNA[exonNum]
-                resultFile.write('\t'.join(['chr'+chrs[targetGene],
+                resultFile.write('\t'.join([chrs[targetGene],
                                             str(subf[0]+1),
                                             str(subf[1]),
                                             '_'.join([targetGene,
@@ -240,25 +368,23 @@ parser.add_argument('--geneListFile','-glf',type=str,
                     help='file with list of genes. Format is: GENE EXONS CODONS',required=True)
 parser.add_argument('--refDir','-ref',type=str,
                     help='directory with reference files',required=True)
-parser.add_argument('--organism','-org',type=str,
-                    help='common name of organism (human, sheep, etc). Default: human',default='human')
+parser.add_argument('--reference-genome','-wgref',
+                 dest='wholeGenomeRef',type=str,
+                 help='file with INDEXED whole-genome reference sequence',
+                 required=True)
 parser.add_argument('--resultFile','-rf',type=str,
                     help='file for results',required=True)
 parser.add_argument('--intron-nucleotides','-intron',type=int,dest='intronSize',
                     help='number of nucleotides from intron to take. Default: 2',default=2)
 parser.add_argument('--include-noncoding','-noncoding',dest='includeNonCoding',action='store_true',
                     help="use this parameter, if you want to include 5'- and 3'-non-coding regions of mRNA")
-parser.add_argument('--email','-email',type=str,
-                    help='e-mail for getting chromosome number '
-                         'from the ENTREZ database for the user-defined genes.'
-                         ' Default: info@gmail.com',
-                    required=False,default='info@gmail.com')
 args=parser.parse_args()
-
-en.email=args.email
+chrToChr(args.wholeGenomeRef)
 refDir=args.refDir
-org=args.organism
 intronSize=args.intronSize
+
+if refDir[-1]!=os.path.sep:
+    refDir+=os.path.sep                
 
 # Read input file
 print('Reading input file and getting chromosome numbers...')
@@ -273,10 +399,10 @@ for string in geneListFile:
     cols=string[:-1].split('\t')
     print(cols[0])
     targetGenes.append(cols[0])
-    chrs[cols[0]]=getChrNum(cols[0],org)
+    chrs[cols[0]]=getChrNum(cols[0],refDir)
     if chrs[cols[0]]==None:
-        print('ERROR: Gene '+cols[0]+' was not found in the Gene database of NCBI!')
-        exit(1)
+        print('ERROR (5)! Gene '+cols[0]+' was not found in the Gene database of NCBI!')
+        exit(5)
     if not (len(cols)<2 or cols[1]==''):
         ex=cols[1].split(',')
         exons[cols[0]]=[]
@@ -317,14 +443,22 @@ mainProteins={'NRG1':'NP_039251.'}
 print('Getting genome regions for the input genes...')
 for t in targetGenes:
     print(t)
-    try:
-        data=SeqIO.read(refDir+'chr'+chrs[t]+'.gb','genbank')
-    except FileNotFoundError:
-        try:
-            data=SeqIO.read(gzip.open(refDir+'chr'+chrs[t]+'.gb.gz','rt'),'genbank')
-        except:
-            print('ERROR: GenBank file for chromosome '+chrs[t]+' is absent in the reference directory '+refDir+'!')
-            exit(1)
+    # Here, chrs[t] will have chromosome name,
+    # but GB-files can be named by chromosome numbers
+    # Names
+    if os.path.exists(refDir+str(chrs[t])+'.gb'):
+        data=SeqIO.read(refDir+str(chrs[t])+'.gb','genbank')
+    elif os.path.exists(refDir+str(chrs[t])+'.gb.gz'):
+        data=SeqIO.read(gzip.open(refDir+str(chrs[t])+'.gb.gz','rt'),'genbank')
+    # Numbers
+    elif os.path.exists(refDir+str(nameToNum[chrs[t]])+'.gb'):
+        data=SeqIO.read(refDir+str(nameToNum[chrs[t]])+'.gb','genbank')
+    elif os.path.exists(refDir+str(nameToNum[chrs[t]])+'.gb.gz'):
+        data=SeqIO.read(gzip.open(refDir+str(nameToNum[chrs[t]])+'.gb.gz','rt'),'genbank')
+    else:
+        print('ERROR (6)! GenBank file for chromosome '+str(chrs[t])+' is absent in the reference directory '+refDir+'!')
+        print(refDir+str(chrs[t])+'.gb', refDir+str(chrs[t])+'.gb.gz', str(nameToNum[chrs[t]])+'.gb','or',str(nameToNum[chrs[t]])+'.gb.gz')
+        exit(6)
     geneFound=False
     # several_mRNA_isoforms contains all saved mRNA isoforms for current gene
     ## And then we take one with the lowest number
@@ -392,8 +526,8 @@ for t in targetGenes:
                 if (len(mRNA_exons)==0 and
                     len(several_mRNA_isoformsNums)==0 and
                     len(several_mRNA_isoformsWords)==0):
-                    print('ERROR: mRNA feature was not found in the GenBank file '+refDir+'chr'+chrs[t]+'.gb for the gene '+t+'!')
-                    exit(1)
+                    print('ERROR (7)! mRNA feature was not found in the GenBank file '+refDir+'chr'+chrs[t]+'.gb for the gene '+t+'!')
+                    exit(7)
                 elif (len(mRNA_exons)==0 and
                       (len(several_mRNA_isoformsNums)>0 or
                        len(several_mRNA_isoformsWords)>0)):
@@ -407,7 +541,7 @@ for t in targetGenes:
                 writeRegions(resultFile,t,mRNA_exons,f.location.parts,codons,exons,nucs)
                 break
     if not geneFound:
-        print('ERROR: gene with name "'+t+'" was not found in chromosome '+chrs[t])
-        exit(0)
+        print('ERROR (8)! Gene with name "'+t+'" was not found in chromosome '+chrs[t])
+        exit(8)
 resultFile.close()
-print('Done')
+print('NGS-PrimerPlex finished!')

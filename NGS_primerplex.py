@@ -24,11 +24,22 @@ import networkx.algorithms.shortest_paths.weighted as weighted_shortest_paths
 from itertools import islice
 from collections import Counter
 
-global thisDir
+global thisDir,nameToNum,numToName
 thisDir=os.path.dirname(os.path.realpath(__file__))+'/'
 
 # Section of functions
+def chrToChr(args):
+    global nameToNum,numToName
+    nameToNum={}
+    numToName={}
+    refFa=pysam.FastaFile(args.wholeGenomeRef)
+    for i,ch in enumerate(refFa.references):
+        nameToNum[ch]=i+1
+        numToName[i+1]=ch
+    return(nameToNum,numToName)
+
 def readInputFile(regionsFile):
+    global nameToNum,numToName
     allRegions={}
     regionsNames={}
     regionNameToChrom={}
@@ -43,11 +54,25 @@ def readInputFile(regionsFile):
             string=='' or string=='\n'):
             continue            
         cols=string.replace('\n','').split('\t')
-        chrom=cols[0].replace('chr','')
-        if chrom=='X':
-            chrom='23'
-        elif chrom=='Y':
-            chrom='24'
+        # chrom is a name of chromosome (e.g. chr1, chr2 etc)
+        # chromInt is a number of chromosome in the reference genome file (e.g. 1,2,3 etc)
+        # But the last one can be different from names (e.g. chr1 can be chromosome #2)
+        # So the user shouldn't see this numbers in order not to shock him or her
+        chrom=cols[0]
+        try:
+            chromInt=int(chrom)
+        except ValueError:
+            if chrom in nameToNum.keys():
+                chromInt=nameToNum[chrom]
+            else:
+                print('ERROR (56)! Incorrect format of chromosome!')
+                print('According to the defined reference genome, chromosome names are:')
+                print(sorted(nameToNum.keys()))
+                print('Or you can use numbers of chromosome, and they correspond to the following names:')
+                for num,name in sorted(numToName.items(),
+                                       key=lambda item:item[0]):
+                    print(num,name)
+                exit(56)
         try:
             regStart=int(cols[1])
             regEnd=int(cols[2])
@@ -70,7 +95,7 @@ def readInputFile(regionsFile):
         for i in range(regStart,regEnd+1):
             totalPointInputRegions+=1
             try:
-                if int(chrom) not in regionsCoords.keys() or i not in regionsCoords[int(chrom)]:
+                if chromInt not in regionsCoords.keys() or i not in regionsCoords[chromInt]:
                     if regionName not in regionsNames.keys():
                         regionsNames[regionName]=[regionName+'_1']
                     else:
@@ -88,11 +113,6 @@ def readInputFile(regionsFile):
                             exit(2)
                         regionNameToPrimerType[curRegionName]=cols[5]
                     if len(cols)>6 and cols[6]!='':
-##                        if cols[6] not in ['W']:
-##                            print('ERROR! Unknown value for "using whole region" for the following line of input file:')
-##                            print(string)
-##                            print('This value can be only "W" (do not split this region onto several amplicons), or nothing (region can be splitted onto several amplicons)')
-##                            exit(3)
                         if cols[6]=='W':
                             endShift=regEnd-regStart
                             print('ATTENTION! For region',regionName,'whole region was chosen!')
@@ -103,15 +123,17 @@ def readInputFile(regionsFile):
                         endShift=0
                     if chrom not in allRegions.keys():
                         allRegions[chrom]={curRegionName:[chrom,i,i+endShift,curRegionName]}
-                        regionsCoords[int(chrom)]=[i]
+                        regionsCoords[chromInt]=[i]
                         uniquePointRegions+=1
                     else:
                         # Addtionally check that all input regions are unique
                         if [chrom,i,i+endShift,curRegionName] not in allRegions[chrom].values():
                             allRegions[chrom][curRegionName]=[chrom,i,i+endShift,curRegionName]
-                            regionsCoords[int(chrom)].append(i)
+                            regionsCoords[chromInt].append(i)
                             uniquePointRegions+=1
                     if endShift>0:
+                        for i in range(regStart+1,regEnd+1):
+                            regionsCoords[chromInt].append(i)
                         break
             except ValueError:
                 print('ERROR: Incorrect format of input file!')
@@ -123,12 +145,15 @@ def readInputFile(regionsFile):
                 print(string)
                 exit(4)
     # Sort dict with regions coords
-    for chrom in regionsCoords.keys():
-        regionsCoords[chrom]=sorted(regionsCoords[chrom])
+    for chromInt in regionsCoords.keys():
+        regionsCoords[chromInt]=sorted(regionsCoords[chromInt])
     print(' # Total number of input point regions:',totalPointInputRegions)
     print(' # Number of unique input point regions:',uniquePointRegions)
     logger.info(' # Total number of input point regions: '+str(totalPointInputRegions))
     logger.info(' # Number of unique input point regions: '+str(uniquePointRegions))
+    # allRegions has chromosome names
+    # regionsCoords has chromosome numbers
+    # regionNameToChrom has chromosome names
     return(allRegions,regionsNames,regionsCoords,regionNameToChrom,regionNameToMultiplex,regionNameToPrimerType)
 
 def readPrimersFile(primersFile):
@@ -156,7 +181,7 @@ def readPrimersFile(primersFile):
         internalPrimers.append(row[1:16])
     return(internalPrimers,amplifiedRegions)
 
-def createPrimer3_parameters(pointRegions,args,species='human',
+def createPrimer3_parameters(pointRegions,args,
                              designedInternalPrimers=None,
                              regionNameToPrimerType=None,
                              regionNameNeedToBeWholeLen=None,
@@ -240,15 +265,8 @@ def createPrimer3_parameters(pointRegions,args,species='human',
             chrTargetSeqStart=amplBlockEnd-(args.maxExtAmplLen-args.minPrimerShift-args.minPrimerLen)
             # In COSMIC database chromosome X and Y are designated as 23 and 24, respectively
             ## So we need to check if primers are designed for human genome and chromosomes may be 23 and 24 instead of X and Y
-            if species=='human':
-                if chrom=='23':
-                    chromName='X'
-                elif chrom=='24':
-                    chromName='Y'
-                else:
-                    chromName=str(chrom)
-            else:
-                chromName=str(chrom)
+            chromInt=nameToNum[chrom]
+            chromName=chrom
             if (chrTargetSeqStart<0 or
                 amplBlockEnd+args.maxExtAmplLen-args.minPrimerShift-args.minPrimerLen<0):
                 print('ERROR #54: Unknown error with coordinates for sequence extraction from genome:')
@@ -260,7 +278,7 @@ def createPrimer3_parameters(pointRegions,args,species='human',
                                                      args.maxExtAmplLen,args.minPrimerShift,
                                                      args.minPrimerLen])))
                 exit(54)
-            lines=pysam.faidx(wgref,'chr'+chromName+':'+str(chrTargetSeqStart)+'-'+str(amplBlockEnd+(args.maxExtAmplLen-args.minPrimerShift-args.minPrimerLen)+1)).split('\n')
+            lines=pysam.faidx(wgref,chromName+':'+str(chrTargetSeqStart)+'-'+str(amplBlockEnd+(args.maxExtAmplLen-args.minPrimerShift-args.minPrimerLen)+1)).split('\n')
             if lines[1]=='':
                 print('ERROR #7: Extracted sequence has no length')
                 logger.error('#7 Extracted sequence has no length')
@@ -325,22 +343,15 @@ def createPrimer3_parameters(pointRegions,args,species='human',
                 primer3Params[curRegionName]=[]
                 # In COSMIC database chromosome X and Y are designated as 23 and 24, respectively
                 ## So we need to check if primers are designed for human genome and chromosomes may be 23 and 24 instead of X and Y
-                if species=='human':
-                    if chrom=='23':
-                        chromName='X'
-                    elif chrom=='24':
-                        chromName='Y'
-                    else:
-                        chromName=str(chrom)
-                else:
-                    chromName=str(chrom)
+                chromInt=nameToNum[chrom]
+                chromName=chrom
                 if start-args.maxAmplLen<0:
                     print('ERROR! (53) Unknown error with coordinates for sequence extraction from genome:')
                     logger.error('(53) Unknown error with coordinates for sequence extraction from genome:')
                     print(chromName,start,args.maxAmplLen,end)
                     logger.error(', '.join([chromName,str(start),str(args.maxAmplLen),str(end)]))
                     exit(53)
-                lines=pysam.faidx(wgref,'chr'+chromName+':'+str(start-args.maxAmplLen)+'-'+str(end+args.maxAmplLen)).split('\n')
+                lines=pysam.faidx(wgref,chromName+':'+str(start-args.maxAmplLen)+'-'+str(end+args.maxAmplLen)).split('\n')
                 if lines[1]=='':
                     print('ERROR! (9) Extracted sequence has no length')
                     print(chromName,start-1-args.maxAmplLen,end+args.maxAmplLen)
@@ -382,9 +393,11 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
     # chrom is string
     p=ThreadPool(args.threads)
     # Dictionary for storing primers' info
+    # Contains chromosome names
     if primersInfo==None:
         primersInfo={}
     # Dictionary for storing primers' info but primers are splitted by chromosome location
+    # Contains chromosome numbers
     if primersInfoByChrom==None:
         primersInfoByChrom={}
     # Dictionary for making unique amplicon names
@@ -402,14 +415,14 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
     for i,(regionName,inputParams) in enumerate(primer3Params.items()):
         for inputParam in inputParams:
             results.append(p.apply_async(runPrimer3,(regionName,inputParam,False,args)))
-        showPercWork(i+1,wholeWork)
+        showPercWork(i+1,wholeWork,args.gui)
     print()
     doneWork=0
     wholeWork=len(results)
     primerDesignExplains={}
     for res in results:
         doneWork+=1
-        showPercWork(doneWork,wholeWork)
+        showPercWork(doneWork,wholeWork,args.gui)
         curRegionName,primerSeqs,primersCoords,primerTms,amplLens,amplScores,primer3File,designOutput=res.get()
         if curRegionName not in amplNames.keys():
             amplNames[curRegionName]=[]
@@ -426,12 +439,14 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
             else:
                 primerDesignExplains[curRegionName].append(explanation)
             continue
-        chrom=regionNameToChrom[curRegionName]
-        if int(chrom) not in primersInfoByChrom.keys():
-            primersInfoByChrom[int(chrom)]={}
+        chromName=regionNameToChrom[curRegionName]
+        chrom=chromName
+        chromInt=nameToNum[chromName]
+        if chromInt not in primersInfoByChrom.keys():
+            primersInfoByChrom[chromInt]={}
         # Extract start and end of target region
         try:
-            start,end=allRegions[chrom][curRegionName][1:3]
+            start,end=allRegions[chromName][curRegionName][1:3]
         except KeyError:
             print('ERROR!',allRegions.keys())
             exit(10)
@@ -461,8 +476,8 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
             amplBlockEnd=primersCoords[2*i+1][0]-primersCoords[2*i+1][1]
             # Save info about this pair
             primersInfo['_'.join(primerSeqs[2*i:2*i+2])]=[primersCoords[2*i:2*i+2],primerTms[2*i:2*i+2],amplLens[i],amplScores[i],chrom]
-            if '_'.join(primerSeqs[2*i:2*i+2]) not in primersInfoByChrom[int(chrom)].keys():
-                primersInfoByChrom[int(chrom)]['_'.join(primerSeqs[2*i:2*i+2])]=primersCoords[2*i:2*i+2]
+            if '_'.join(primerSeqs[2*i:2*i+2]) not in primersInfoByChrom[chromInt].keys():
+                primersInfoByChrom[chromInt]['_'.join(primerSeqs[2*i:2*i+2])]=primersCoords[2*i:2*i+2]
             # Check if this pair of primers covers also other target input regions
             coveredPointRegions=checkThisPrimerPairForCoveringOtherInputRegions(allRegions[chrom],amplBlockStart,amplBlockEnd)
             for curRegionName in coveredPointRegions:
@@ -496,9 +511,9 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
         logger.warn(' # WARNING! For '+str(len(regionsWithoutPrimers))+' regions primers could not be designed with the defined parameters. Here are these regions:')
         for regionWithoutPrimer in regionsWithoutPrimers:
             if args.skipUndesigned:
-                regionsCoords[int(regionNameToChrom[regionWithoutPrimer])].remove(allRegions[regionNameToChrom[regionWithoutPrimer]][regionWithoutPrimer][1])
-                if len(regionsCoords[int(regionNameToChrom[regionWithoutPrimer])])==0:
-                    regionsCoords.pop(int(regionNameToChrom[regionWithoutPrimer]))
+                regionsCoords[nameToNum[regionNameToChrom[regionWithoutPrimer]]].remove(allRegions[regionNameToChrom[regionWithoutPrimer]][regionWithoutPrimer][1])
+                if len(regionsCoords[nameToNum[regionNameToChrom[regionWithoutPrimer]]])==0:
+                    regionsCoords.pop(nameToNum[regionNameToChrom[regionWithoutPrimer]])
                 allRegions[regionNameToChrom[regionWithoutPrimer]].pop(regionWithoutPrimer)
                 if len(allRegions[regionNameToChrom[regionWithoutPrimer]])==0:
                     allRegions.pop(regionNameToChrom[regionWithoutPrimer])
@@ -865,24 +880,23 @@ def readDraftPrimers(draftFile,external=False):
         row=ws.row_values(i)
         ##    [primersCoords[2*i:2*i+2],primerTms[2*i:2*i+2],amplLens[i],amplScores[i],chrom]
         chrom=getChrNum(row[9])
+        chromInt=nameToNum[chrom]
         primersInfo[row[0]]=[[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]],
                              [int(row[5]),int(row[6])],
                              int(row[7]),int(row[8]),str(chrom)]
-        if chrom not in primersInfoByChrom.keys():
-            primersInfoByChrom[chrom]={row[0]:[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]}
-        elif row[0] not in primersInfoByChrom[chrom].keys():
-            primersInfoByChrom[chrom][row[0]]=[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]
+        if chromInt not in primersInfoByChrom.keys():
+            primersInfoByChrom[chromInt]={row[0]:[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]}
+        elif row[0] not in primersInfoByChrom[chromInt].keys():
+            primersInfoByChrom[chromInt][row[0]]=[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]
     return(primersInfo,primersInfoByChrom)
 
 def getChrNum(chrom):
-    if 'chr' in str(chrom):
-        chrom=chrom.replace('chr','')
-    if chrom=='X' or chrom=='x':
-        chrom=23
-    elif chrom=='Y' or chrom=='y':
-        chrom=24
-    else:
-        chrom=int(round(float(chrom),0))
+    try:
+        chrom=str(int(round(float(chrom),0)))
+    except ValueError:
+        if chrom not in nameToNum.keys():
+            print('ERROR (55)! Chromosome '+ chrom+' not found in reference file')
+            exit(55)
     return(chrom)
 
 def getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom):
@@ -891,12 +905,13 @@ def getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom):
     amplNames={}
     primersToAmplNames={}
     uncoveredRegions=deepcopy(allRegions)
-    for chrom,coords in primersInfoByChrom.items():
+    for chromInt,coords in primersInfoByChrom.items():
         coordToRegionName={}
+        chrom=numToName[chromInt]
         # If current primer pair does not cover any of target regions
-        if str(chrom) not in allRegions.keys():
+        if chrom not in allRegions.keys():
             continue
-        for regionCoords in allRegions[str(chrom)].values():
+        for regionCoords in allRegions[chrom].values():
             coordToRegionName[regionCoords[1]]=regionCoords[3]
         for primerPair,coord in coords.items():
             for i in range(coord[0][0]+coord[0][1],coord[1][0]-coord[1][1]+1):
@@ -914,16 +929,16 @@ def getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom):
                         primersToAmplNames[primerPair]=[curAmplName]
                     else:
                         primersToAmplNames[primerPair].append(curAmplName)
-                    if (curRegionName in uncoveredRegions[str(chrom)].keys() and
-                        allRegions[str(chrom)][curRegionName][1]==allRegions[str(chrom)][curRegionName][2]):
-                        uncoveredRegions[str(chrom)].pop(curRegionName)
-                    elif (curRegionName in uncoveredRegions[str(chrom)].keys() and
-                          coord[0][0]+coord[0][1]<=allRegions[str(chrom)][curRegionName][1] and
-                          coord[1][0]-coord[1][1]>=allRegions[str(chrom)][curRegionName][2]):
-                        uncoveredRegions[str(chrom)].pop(curRegionName)
+                    if (curRegionName in uncoveredRegions[chrom].keys() and
+                        allRegions[chrom][curRegionName][1]==allRegions[chrom][curRegionName][2]):
+                        uncoveredRegions[chrom].pop(curRegionName)
+                    elif (curRegionName in uncoveredRegions[chrom].keys() and
+                          coord[0][0]+coord[0][1]<=allRegions[chrom][curRegionName][1] and
+                          coord[1][0]-coord[1][1]>=allRegions[chrom][curRegionName][2]):
+                        uncoveredRegions[chrom].pop(curRegionName)
                         break
-        if len(uncoveredRegions[str(chrom)])==0:
-            uncoveredRegions.pop(str(chrom))
+        if len(uncoveredRegions[chrom])==0:
+            uncoveredRegions.pop(chrom)
     return(uncoveredRegions,amplNames,primersToAmplNames)
 
 def getRegionsUncoveredByDraftExternalPrimers(primersInfo,primersInfoByChrom,outputInternalPrimers,args):
@@ -945,12 +960,13 @@ def getRegionsUncoveredByDraftExternalPrimers(primersInfo,primersInfoByChrom,out
     regionNameToChrom={}
     amplToStartCoord={}
     refFa=pysam.FastaFile(args.wholeGenomeRef)
-    for chrom,coords in primersInfoByChrom.items():
+    for chromInt,coords in primersInfoByChrom.items():
+        chrom=numToName[chromInt]
         for amplName,parameters in sorted(outputInternalPrimers.items(),
                                           key=lambda item:item[1][3]):
-            if str(chrom)!=parameters[3]:
+            if chrom!=parameters[3]:
                 continue
-            elif str(chrom)>parameters[3]:
+            elif chrom>parameters[3]:
                 break
             for primerPair,coord in coords.items():
                 # If current external primers overlap with internal no more than defined shift
@@ -967,7 +983,7 @@ def getRegionsUncoveredByDraftExternalPrimers(primersInfo,primersInfoByChrom,out
                         rightGC=0
                     seq=extractGenomeSeq(refFa,chrom,coord[0][0]-100,coord[1][0]+100)
                     outputExternalPrimers[parameters[2]]=[[leftPrimer,rightPrimer,parameters[2]+'_ext',
-                                                          str(chrom),coord[0][0],coord[1][0],coord[1][0]-coord[0][0]+1,
+                                                          chrom,coord[0][0],coord[1][0],coord[1][0]-coord[0][0]+1,
                                                           coord[0][0]+coord[1][0],coord[1][0]-coord[1][1],
                                                           primersInfo[primerPair][1][0],primersInfo[primerPair][1][1],
                                                           len(leftPrimer),len(rightPrimer),leftGC,rightGC,
@@ -976,7 +992,7 @@ def getRegionsUncoveredByDraftExternalPrimers(primersInfo,primersInfoByChrom,out
                     if amplName in uncoveredInternalPrimers.keys():
                         uncoveredInternalPrimers.pop(amplName)
                     chrTargetSeqStart=parameters[9]-(args.maxExtAmplLen-args.minPrimerShift-args.minPrimerLen)
-                    regionNameToChrom[parameters[2]]=str(chrom)
+                    regionNameToChrom[parameters[2]]=chrom
                     amplToStartCoord[parameters[2]]=chrTargetSeqStart
     return(outputExternalPrimers,uncoveredInternalPrimers,regionNameToChrom,amplToStartCoord)
 
@@ -1019,7 +1035,8 @@ def checkThisPrimerPairForCoveringOtherInputRegions(chromPointRegions,amplBlockS
     allStarts=[region[1] for region in chromPointRegions.values()]
     allStarts.append(amplBlockStart)
     allStarts.sort()
-    for region in sorted(chromPointRegions.values(),key=itemgetter(1))[allStarts.index(amplBlockStart):]:
+    for region in sorted(chromPointRegions.values(),
+                         key=itemgetter(1))[allStarts.index(amplBlockStart):]:
         chrom,start,end,curRegionName=region
         if start>amplBlockEnd:
             break
@@ -1027,7 +1044,12 @@ def checkThisPrimerPairForCoveringOtherInputRegions(chromPointRegions,amplBlockS
             coveredRegions.append(curRegionName)
     return(coveredRegions)
 
-def checkPrimersSpecificity(inputFileBase,primersInfo,wholeGenomeRef,runName,substNum=1,threads=2,maxNonSpecLen=100,maxPrimerNonspec=1000,external=False,varNum=''):
+def checkPrimersSpecificity(inputFileBase,primersInfo,
+                            wholeGenomeRef,runName,
+                            substNum=1,threads=2,gui=False,
+                            maxNonSpecLen=100,
+                            maxPrimerNonspec=1000,
+                            external=False,varNum=''):
     # Dictionary for storing info about primers specificity by primers
     ## for checking specificity within one amplicon    
     primersNonSpecRegions={}
@@ -1054,8 +1076,22 @@ def checkPrimersSpecificity(inputFileBase,primersInfo,wholeGenomeRef,runName,sub
         bwaResultFileName=inputFileBase+'_NGS_primerplex'+runName+'_all_primers_sequences.bwa'
     print(' Running BWA...')
     logger.info(' Running BWA...')
-    out=sp.check_output('bwa aln -N -n '+str(args.substNum)+' -t '+str(threads)+' '+wholeGenomeRef+' '+seqFile.name+' > '+bwaResultFileName+'.sai',shell=True,stderr=sp.STDOUT).decode('utf-8')
-    out=sp.check_output('bwa samse -n 10000000 '+wholeGenomeRef+' '+bwaResultFileName+'.sai'+' '+seqFile.name+' > '+bwaResultFileName+'.sam',shell=True,stderr=sp.STDOUT).decode('utf-8')
+    if not os.path.exists(wholeGenomeRef+'.sa'):
+        print('WARNING! BWA index is absent for the defined reference genome' '\n' +'Indexing whole genome reference with BWA')
+        out=sp.check_output('bwa index '+wholeGenomeRef,shell=True,stderr=sp.STDOUT).decode('utf-8')
+    if not os.path.exists(wholeGenomeRef+'.fai'):
+        print('WARNING! Samtools index is absent for the defined reference genome' '\n' +'Indexing whole genome reference with samtools')
+        out=sp.check_output('samtools faidx '+wholeGenomeRef,shell=True,stderr=sp.STDOUT).decode('utf-8')
+    cmd=['bwa','aln','-N','-n',str(args.substNum),
+         '-t',str(threads),wholeGenomeRef,seqFile.name]
+    with open(bwaResultFileName+'.sai','wb') as file:
+        output=sp.call(cmd,stdout=file,stderr=sp.DEVNULL)
+    cmd=['bwa','samse','-n','10000000',wholeGenomeRef,
+         bwaResultFileName+'.sai',seqFile.name]
+    with open(bwaResultFileName+'.sam','wt') as file:
+        output=sp.call(cmd,stdout=file,stderr=sp.DEVNULL)
+##    out=sp.check_output('bwa aln -N -n '+str(args.substNum)+' -t '+str(threads)+' '+wholeGenomeRef+' '+seqFile.name+' > '+bwaResultFileName+'.sai',shell=True,stderr=sp.STDOUT).decode('utf-8')
+##    out=sp.check_output('bwa samse -n 10000000 '+wholeGenomeRef+' '+bwaResultFileName+'.sai'+' '+seqFile.name+' > '+bwaResultFileName+'.sam',shell=True,stderr=sp.STDOUT).decode('utf-8')        
     # Reading BWA output file
     samFile=pysam.AlignmentFile(bwaResultFileName+'.sam')
     # Process SAM-file strings in several threads
@@ -1074,7 +1110,7 @@ def checkPrimersSpecificity(inputFileBase,primersInfo,wholeGenomeRef,runName,sub
         # res[0] is a primer name
         res=res.get()
         doneWork+=1
-        showPercWork(doneWork,wholeWork)
+        showPercWork(doneWork,wholeWork,gui)
         if res[1]==None or len(res[1])==0:
             primersNonSpecRegions[res[0]]=None
         else:
@@ -1150,7 +1186,8 @@ def checkPrimersSpecificity(inputFileBase,primersInfo,wholeGenomeRef,runName,sub
                 ## on chromosomes that are presented in both dicts
                 for chrom,chrRegions in regions1.items():
                     totalNonspecRegionsForPrimer1+=len(chrRegions)
-                    if chrom not in regions2.keys(): continue
+                    if chrom not in regions2.keys():
+                        continue
                     for reg1 in chrRegions:
                         for reg2 in regions2[chrom]:
                             # Strands should be different for two nonspecific regions of primers
@@ -1277,7 +1314,8 @@ def readBwaFile(read,maxPrimerNonspec,refFa,primersInfo=None):
                 primerNonSpecRegions.append([chrom,regStrand,abs(int(pos)),regionLen])
     return(read.qname,primerNonSpecRegions)
 
-def getPrimerPairsThatFormUnspecificProduct(primersNonSpecRegionsByChrs,maxNonSpecLen=100,threads=2):
+def getPrimerPairsThatFormUnspecificProduct(primersNonSpecRegionsByChrs,maxNonSpecLen=100,
+                                            threads=2,gui=False):
     unspecificPrimers=set()
     p=ThreadPool(threads)
     results=[]
@@ -1289,7 +1327,7 @@ def getPrimerPairsThatFormUnspecificProduct(primersNonSpecRegionsByChrs,maxNonSp
     for i,res in enumerate(results):
         res=res.get()
         unspecificPrimers.update(res)
-        showPercWork(i+1,allWork)
+        showPercWork(i+1,allWork,gui)
     return(unspecificPrimers)
 
 def checkPrimerCoordinatesWithOtherPrimers(primer1,regions1,primers2,maxNonSpecLen):
@@ -1308,13 +1346,14 @@ def checkPrimerCoordinatesWithOtherPrimers(primer1,regions1,primers2,maxNonSpecL
 
 def removeBadPrimerPairs(primersInfoByChrom,primersInfo,goodPrimers,primersToAmplNames,amplNames):
     newPrimersInfoByChrom={}
-    for chrom,primers in primersInfoByChrom.items():
+    for chromInt,primers in primersInfoByChrom.items():
+        chrom=numToName[chromInt]
         for primerPairName,primers in primers.items():
             if primerPairName in goodPrimers:
-                if chrom not in newPrimersInfoByChrom.keys():
-                    newPrimersInfoByChrom[chrom]={primerPairName:primers}
-                elif primerPairName not in newPrimersInfoByChrom[chrom].keys():
-                    newPrimersInfoByChrom[chrom][primerPairName]=primers
+                if chromInt not in newPrimersInfoByChrom.keys():
+                    newPrimersInfoByChrom[chromInt]={primerPairName:primers}
+                elif primerPairName not in newPrimersInfoByChrom[chromInt].keys():
+                    newPrimersInfoByChrom[chromInt][primerPairName]=primers
                 else:
                     print('ERROR! Pair of primers is repeated in the primersInfoByChrom!')
                     print(chrom,primerPairName)
@@ -1369,7 +1408,7 @@ def checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regio
 
 def analyzePrimersForCrossingSNP(primersInfo,threads,
                                  dbSnpVcfFile,
-                                 end3Len=None):
+                                 end3Len=None,gui=False):
     p=ThreadPool(threads)
     results=[]
     for primers,info in sorted(primersInfo.items(),
@@ -1400,7 +1439,7 @@ def analyzePrimersForCrossingSNP(primersInfo,threads,
         if result:
             primersCoveringSNPs.append(primer)
         done+=1
-        showPercWork(done,wholeWork)
+        showPercWork(done,wholeWork,gui)
     p.close()
     p.join()
     primerPairsNonCoveringSNPs=[]
@@ -1425,20 +1464,20 @@ def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,
     # Previously, we only filtered out primers that crossed SNP by 3'-end
     # Now, we filter primers that cross SNP by any of its sequence
     hfSnpFound=False
-    chrom=chrom.replace('chr','')
-    if chrom=='23':
-        chrom='X'
-    elif chrom=='24':
-        chrom='Y'
     snps=[]
     try:
-        for snp in vcf.fetch(chrom,start-1,end):
+        for snp in vcf.fetch(chrom.replace('chr',''),start-1,end):
             if float(snp.info['CAF'][0])<1-freq:
                 snps.append(snp)
     except ValueError:
-        print('ERROR! You need to place *.tbi file for dbSNP VCF-file in the same folder:')
-        print(dbSnpVcfFile)
-        exit(49)
+        try:
+            for snp in vcf.fetch(chrom,start-1,end):
+                if float(snp.info['CAF'][0])<1-freq:
+                    snps.append(snp)
+        except:
+            print('ERROR (49)! You need to place *.tbi file for dbSNP VCF-file in the same folder:')
+            print(dbSnpVcfFile)
+            exit(49)
     if len(snps)>0:
         hfSnpFound=True
     return(primer,hfSnpFound)
@@ -1446,10 +1485,14 @@ def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,
 # joinAmpliconsToAmplifiedBlocks joins neighbourhing or overlapping amplicons to blocks
 # Minimal path is a path of one primer:
 ## [coord1,primer_name,coord2]
-def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=100,chrom=None):
+# chrom here is a chromosome number
+def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,
+                          maxAmplLen=100,chromInt=None,
+                          returnVariantsNum=10):
+    chrom=numToName[chromInt]
     # First, split all regions on this chromosome onto blocks, elements of which cannot be joined into one amplificated block
     blocks=[[chromRegionsCoords[0]]]
-    coordToBlock={} # converts coordinate into the number of block 
+    coordToBlock={} # converts coordinate into the number of block
     for coord in chromRegionsCoords[1:]:
         if coord>=blocks[-1][-1]+maxAmplLen*2:
             blocks.append([coord])
@@ -1560,7 +1603,7 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
                 finalShortestPaths.append(path[1:-1])
         else:
             try:
-                path=tuple(nx.algorithms.shortest_paths.generic.shortest_path(blockGraph,firstNodes[i],lastNodes[i],'weight'))
+                path=tuple(nx.algorithms.shortest_paths.generic.shortest_path(blockGraph,firstNodes[i],lastNodes[i]))
             except nx.exception.NetworkXNoPath as e:
                 print('ERROR! Too low value of maximal overlap (-maxoverlap) or of initially designed primers (-primernum): '+str(args.maxoverlap)+' and '+str(args.primernum1)+'. Try to increase one of them')
                 logger.error(' Too low value of maximal overlap (-maxoverlap) or of initially designed primers (-primernum): '+str(args.maxoverlap)+' and '+str(args.primernum1)+'. Try to increase one of them')
@@ -1570,41 +1613,64 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,maxAmplLen=
                 logger.error(str(chromPrimersInfoByChrom))
                 exit(25)
             g1=blockGraph.subgraph(path)
-            shortestPaths={path:g1.size(weight='weight')}
+            shortestPaths={path:len(path)}
             minPathLen=len(path)
-            maxAnalysisVars=100
+            maxAnalysisVars=returnVariantsNum*2
             analysisNum=0
-            while(True):
+            weightOff=False
+            for path in nx.shortest_simple_paths(blockGraph,firstNodes[i],lastNodes[i]):
                 analysisNum+=1
-                edgelist=blockGraph.edges()
-                random.shuffle(edgelist)
-                g=nx.Graph(edgelist)
-                path=tuple(nx.algorithms.shortest_paths.generic.shortest_path(g,firstNodes[i],lastNodes[i],'weight'))
-                g1=blockGraph.subgraph(path)
-                if len(path)<minPathLen:
-                    shortestPaths={path:g1.size(weight='weight')}
-                    minPathLen=len(path)
-                    continue
-                elif len(path)>minPathLen:
-                    continue
-                shortestPaths[path]=g1.size(weight='weight')
-                if len(shortestPaths.keys())>=args.returnVariantsNum*2: break
-                if analysisNum>maxAnalysisVars: break
+                shortestPaths[tuple(path)]=len(path)
+                if len(shortestPaths.keys())>=returnVariantsNum*2:
+                    break
+                if analysisNum>maxAnalysisVars:
+                    break
+##            while(True):
+##                analysisNum+=1
+##                edgelist=blockGraph.edges()
+##                try:
+##                    random.shuffle(edgelist)
+##                except TypeError:
+##                    print('ERROR (55)! Incorrect type of edgelist:')
+##                    print(type(edgelist))
+##                    exit(55)
+##                g=nx.Graph(edgelist)
+##                if weightOff:
+##                    path=tuple(nx.algorithms.shortest_paths.generic.shortest_path(blockGraph,firstNodes[i],lastNodes[i]))
+##                else:
+##                    path=tuple(nx.algorithms.shortest_paths.generic.shortest_path(blockGraph,firstNodes[i],lastNodes[i],'weight'))
+##                g1=blockGraph.subgraph(path)
+##                if len(path)<minPathLen:
+##                    shortestPaths={path:g1.size(weight='weight')}
+##                    minPathLen=len(path)
+##                    continue
+##                elif len(path)>minPathLen:
+##                    continue
+##                if path in shortestPaths.keys():
+##                    weightOff=True
+##                shortestPaths[path]=g1.size(weight='weight')
+##                if len(shortestPaths.keys())>=args.returnVariantsNum*2:
+##                    break
+##                if analysisNum>maxAnalysisVars:
+##                    break
             finalShortestPaths=[]
             j=0
-            for path,value in sorted(shortestPaths.items(),key=itemgetter(1),reverse=True):
+            for path,value in sorted(shortestPaths.items(),key=itemgetter(1)):
                 finalShortestPaths.append(path[1:-1])
                 j+=1
-                if j>=args.returnVariantsNum: break
+                if j>=args.returnVariantsNum:
+                    break
         blocksFinalShortestPaths.append(finalShortestPaths)
-    return(chrom,blocksFinalShortestPaths)
+    return(chromInt,blocksFinalShortestPaths)
 
+# allRegionsAmplifiedBlocks contains chromosome numbers
 def getBestPrimerCombinations(allRegionsAmplifiedBlocks,
                               primersInfo,
                               unspecificPrimers,
                               returnVarNum=1,
                               triesToGetCombination=1000,
-                              totalMultiplexVariants=1000):
+                              totalMultiplexVariants=1000,
+                              gui=False):
     print(' Searching for interactions between the amplified blocks...')
     logger.info(' Searching for interactions between the amplified blocks...')
     # Save interaction numbers for all possible pairs of blocks
@@ -1615,15 +1681,15 @@ def getBestPrimerCombinations(allRegionsAmplifiedBlocks,
     maxBlockVarNum=0
     # Go through all blocks
     # Go through all chromosomes
-    showPercWork(0,len(allRegionsAmplifiedBlocks.keys()))
-    for i,chrom1 in enumerate(sorted(allRegionsAmplifiedBlocks.keys())):
-        totalBlockNum+=len(allRegionsAmplifiedBlocks[chrom1])
+    showPercWork(0,len(allRegionsAmplifiedBlocks.keys()),gui)
+    for i,chromInt1 in enumerate(sorted(allRegionsAmplifiedBlocks.keys())):
+        totalBlockNum+=len(allRegionsAmplifiedBlocks[chromInt1])
         # Go through all blocks of current chromosome
-        for k,block1 in enumerate(allRegionsAmplifiedBlocks[chrom1]):
+        for k,block1 in enumerate(allRegionsAmplifiedBlocks[chromInt1]):
             if len(block1)>maxBlockVarNum:
                 maxBlockVarNum=len(block1)
             # Go through all chromosomes
-            for j,chrom2 in enumerate(sorted(allRegionsAmplifiedBlocks.keys())):
+            for j,chromInt2 in enumerate(sorted(allRegionsAmplifiedBlocks.keys())):
                 # If chrom2 is sorted earlier than chrom1, skip chrom2
                 if j<i:
                     continue
@@ -1631,17 +1697,14 @@ def getBestPrimerCombinations(allRegionsAmplifiedBlocks,
                 # Remove variant of the last block of chrom1
                 # Because we changed functions of calculating interNum
                 # and now we need to compare each block with itself
-##                if (k==len(allRegionsAmplifiedBlocks[chrom1])-1 and
-##                    chrom1==chrom2):
-##                    continue
                 # If it is the same chromosome
                 else:
-                    if chrom1==chrom2:
+                    if chromInt1==chromInt2:
                         startNum=k
                     else:
                         startNum=0
                     # Go through all blocks of the 2nd blocks to compare
-                    for z,block2 in enumerate(allRegionsAmplifiedBlocks[chrom2][startNum:]):
+                    for z,block2 in enumerate(allRegionsAmplifiedBlocks[chromInt2][startNum:]):
                         if len(block2)>maxBlockVarNum:
                             maxBlockVarNum=len(block2)
                         # Go through all variants of current block1
@@ -1650,23 +1713,23 @@ def getBestPrimerCombinations(allRegionsAmplifiedBlocks,
                             for w,block2_var in enumerate(block2):
                                 # Get number of interacting primers
                                 interNum=comparePrimersOfTwoBlocks(block1_var,block2_var,unspecificPrimers)
-                                block_ID1='_'.join([str(chrom1),str(k),str(q)])
-                                block_ID2='_'.join([str(chrom2),str(startNum+z),str(w)])
-                                if chrom1 not in allBlockPairValues.keys():
-                                    allBlockPairValues[chrom1]={}
-                                if k not in allBlockPairValues[chrom1].keys():
-                                    allBlockPairValues[chrom1][k]={}
-                                if q not in allBlockPairValues[chrom1][k].keys():
-                                    allBlockPairValues[chrom1][k][q]={}
-                                allBlockPairValues[chrom1][k][q][block_ID2]=interNum
-                                if chrom2 not in allBlockPairValues.keys():
-                                    allBlockPairValues[chrom2]={}
-                                if startNum+z not in allBlockPairValues[chrom2].keys():
-                                    allBlockPairValues[chrom2][startNum+z]={}
-                                if w not in allBlockPairValues[chrom2][startNum+z].keys():
-                                    allBlockPairValues[chrom2][startNum+z][w]={}
-                                allBlockPairValues[chrom2][startNum+z][w][block_ID1]=interNum
-        showPercWork(i+1,len(allRegionsAmplifiedBlocks.keys()))
+                                block_ID1='_'.join([str(chromInt1),str(k),str(q)])
+                                block_ID2='_'.join([str(chromInt2),str(startNum+z),str(w)])
+                                if chromInt1 not in allBlockPairValues.keys():
+                                    allBlockPairValues[chromInt1]={}
+                                if k not in allBlockPairValues[chromInt1].keys():
+                                    allBlockPairValues[chromInt1][k]={}
+                                if q not in allBlockPairValues[chromInt1][k].keys():
+                                    allBlockPairValues[chromInt1][k][q]={}
+                                allBlockPairValues[chromInt1][k][q][block_ID2]=interNum
+                                if chromInt2 not in allBlockPairValues.keys():
+                                    allBlockPairValues[chromInt2]={}
+                                if startNum+z not in allBlockPairValues[chromInt2].keys():
+                                    allBlockPairValues[chromInt2][startNum+z]={}
+                                if w not in allBlockPairValues[chromInt2][startNum+z].keys():
+                                    allBlockPairValues[chromInt2][startNum+z][w]={}
+                                allBlockPairValues[chromInt2][startNum+z][w][block_ID1]=interNum
+        showPercWork(i+1,len(allRegionsAmplifiedBlocks.keys()),gui)
     print('\n Searching for the best primer pair combinations...')
     logger.info(' Searching for the best primer pair combinations...')
     # Create matrix of sorted values for each of block variants:
@@ -1686,15 +1749,15 @@ def getBestPrimerCombinations(allRegionsAmplifiedBlocks,
     # Stores positional number of current block among all blocks
     currentBlockNum=0
     # Go through all chromosomes
-    for chrom in sorted(allRegionsAmplifiedBlocks.keys()):
+    for chromInt in sorted(allRegionsAmplifiedBlocks.keys()):
         # Go through all blocks of current chromosome
-        for k,block in enumerate(allRegionsAmplifiedBlocks[chrom]):
-            for j,blockVarNum in enumerate(sorted(allBlockPairValues[chrom][k],
-                                                  key=lambda blockVarNum:sum(allBlockPairValues[chrom][k][blockVarNum].values()))):
+        for k,block in enumerate(allRegionsAmplifiedBlocks[chromInt]):
+            for j,blockVarNum in enumerate(sorted(allBlockPairValues[chromInt][k],
+                                                  key=lambda blockVarNum:sum(allBlockPairValues[chromInt][k][blockVarNum].values()))):
                 # Save value for current block variant
-                blockVarValues[j,currentBlockNum]=sum(allBlockPairValues[chrom][k][blockVarNum].values())
+                blockVarValues[j,currentBlockNum]=sum(allBlockPairValues[chromInt][k][blockVarNum].values())
                 # Create block variant name
-                block_ID='_'.join([str(chrom),str(k),str(blockVarNum)])
+                block_ID='_'.join([str(chromInt),str(k),str(blockVarNum)])
                 # Save name of current block into the matrix
                 blockVarNames[j,currentBlockNum]=block_ID
             currentBlockNum+=1
@@ -1738,7 +1801,7 @@ def getBestPrimerCombinations(allRegionsAmplifiedBlocks,
             # Save combinations with minimal scores
             combinations[combination]=value
         totalCombNum=len(combinations.keys())
-        showPercWork(totalCombNum,min(triesToGetCombination,totalMultiplexVariants))
+        showPercWork(totalCombNum,min(triesToGetCombination,totalMultiplexVariants),gui)
     print()
     print(' # Total number of combinations selected for the subsequent deeper analysis:',len(combinations))
     logger.info(' # Total number of combinations selected for the subsequent deeper analysis: '+str(len(combinations)))
@@ -1761,8 +1824,8 @@ def getBestPrimerCombinations(allRegionsAmplifiedBlocks,
         # that is necessary for comparePrimersOfTwoBlocks()
         combAllBlocks=[]
         for i,blockVarNameNum in enumerate(combination):
-            chrom,blockNum,blockVarNum=blockVarNames[blockVarNameNum,i].split('_')
-            blockPrimers=allRegionsAmplifiedBlocks[int(chrom)][int(blockNum)][int(blockVarNum)]
+            chromInt,blockNum,blockVarNum=blockVarNames[blockVarNameNum,i].split('_')
+            blockPrimers=allRegionsAmplifiedBlocks[int(chromInt)][int(blockNum)][int(blockVarNum)]
             combAllBlocks.append(blockPrimers)
         newScore=0
         # Count interactions between all primers of all blocks
@@ -1770,7 +1833,7 @@ def getBestPrimerCombinations(allRegionsAmplifiedBlocks,
             for block2 in combAllBlocks[i+1:]:
                 newScore+=comparePrimersOfTwoBlocks(block1,block2,unspecificPrimers)
         combinations[combination]=newScore
-        showPercWork(combNum+1,len(combinations))
+        showPercWork(combNum+1,len(combinations),gui)
     print('\n # Minimal score of the combinations analyzed:',min(combinations.values()))
     logger.info(' # Minimal score of the combinations analyzed: '+str(min(combinations.values())))
     print(' # Maximal score of the combinations analyzed:',max(combinations.values()))
@@ -1786,12 +1849,12 @@ def getBestPrimerCombinations(allRegionsAmplifiedBlocks,
             break
         primerPairNum=0
         for j,blockVarNameNum in enumerate(combination):
-            chrom,blockNum,blockVarNum=blockVarNames[blockVarNameNum,j].split('_')
-            blockPrimers=allRegionsAmplifiedBlocks[int(chrom)][int(blockNum)][int(blockVarNum)]
-            if chrom not in outCombinations[-1].keys():
-                outCombinations[-1][chrom]={}
+            chromIntStr,blockNum,blockVarNum=blockVarNames[blockVarNameNum,j].split('_')
+            blockPrimers=allRegionsAmplifiedBlocks[int(chromIntStr)][int(blockNum)][int(blockVarNum)]
+            if chromIntStr not in outCombinations[-1].keys():
+                outCombinations[-1][chromIntStr]={}
             for primerPair in blockPrimers:
-                outCombinations[-1][chrom][primersInfo[primerPair][0][0][0]]=primerPair.split('_')
+                outCombinations[-1][chromIntStr][primersInfo[primerPair][0][0][0]]=primerPair.split('_')
                 primerPairNum+=1
         print(' # Number of primer pairs and score for the multiplex variant',i+1,'-',primerPairNum,'('+str(combinations[combination])+')')
         logger.info(' # Number of primer pairs and score for the multiplex variant '+str(i+1)+': '+str(primerPairNum)+' ('+str(combinations[combination])+')')
@@ -1960,7 +2023,8 @@ def checkPrimersFit(primers,primersToCompare,
     ## Current primers pair does not form any unspecific product
     ## Maybe, GC-content difference
     # Overlapping is the most important point of checking
-    if int(chrom)==int(primers[2]):
+    # Here we compare chromosome names
+    if chrom==primers[2]:
         inter=set(range(primers[3],primers[4])).intersection(list(range(amplStart,amplEnd)))
         if len(inter)>5:
             # If there is intersection of length more than 5 bp, these primers pair do not correspond each other
@@ -2150,9 +2214,23 @@ def extractGenomeSeq(refFa,chrom,start,end):
                 exit(28)
     return(seq.upper())
 
-def showPercWork(done,allWork):
+def showPercWork(done,allWork,gui=False):
     percDoneWork=round((done/allWork)*100,2)
-    sys.stdout.write("\r"+str(percDoneWork)+"%")
+    if (percDoneWork==10 or
+        percDoneWork==20 or
+        percDoneWork==30 or
+        percDoneWork==40 or
+        percDoneWork==50 or
+        percDoneWork==60 or
+        percDoneWork==70 or
+        percDoneWork==80 or
+        percDoneWork==90 or
+        percDoneWork==100):
+        logger.info(str(percDoneWork)+"%")
+    if gui:
+        sys.stdout.write("\n"+str(percDoneWork)+"%")
+    else:
+        sys.stdout.write("\r"+str(percDoneWork)+"%")
     sys.stdout.flush()
 
 def revComplement(nuc):
@@ -2267,8 +2345,8 @@ par.add_argument('--max-primer-hairpin-th','-maxprimerhairpinth',
                  required=False,default=40)
 par.add_argument('--max-primer-nonspecific','-maxprimernonspec',
                  dest='maxPrimerNonspec',type=int,
-                 help="maximal number of nonspecific regions to which primer can hybridizes. Default: 1000",
-                 required=False,default=1000)
+                 help="maximal number of nonspecific regions to which primer can hybridizes. Default: 10000",
+                 required=False,default=10000)
 par.add_argument('--max-amplicons-overlap','-maxoverlap',
                  dest='maxoverlap',type=int,
                  help='maximal length of overlap between two amplified blocks (it does not include primers). Default: 50',
@@ -2312,8 +2390,8 @@ par.add_argument('--do-blast','-blast',
                  help='use this parameter if you want to perform Blast-analysis of constructed primers')
 par.add_argument('--substititutions-num','-subst',
                  dest='substNum',type=int,
-                 help='accepted number of substitutions for searching primers in genome. Default: 1',
-                 required=False,default=1)
+                 help='accepted number of substitutions for searching primers in genome. Default: 2',
+                 required=False,default=2)
 par.add_argument('--max-nonspecific-amplicon-length','-maxnonspeclen',
                  dest='maxNonSpecLen',type=int,
                  help='maximal length of nonspecific amplicons that the program should consider. '
@@ -2372,6 +2450,9 @@ par.add_argument('--primer-concentration','-primerconc',
                  dest='primerConc',type=int,
                  help='Concentration of each primer, in nM. Default: 250',
                  required=False,default=250)
+par.add_argument('--gui','-gui',
+                 dest='gui',action='store_true',
+                 help='this parameter is only automatically used by GUI of the application')
 args=par.parse_args()
 
 if not args.runName:
@@ -2399,10 +2480,17 @@ except FileNotFoundError:
     print('ERROR! Input file was not found: '+args.regionsFile)
     logger.error('Input file was not found: '+args.regionsFile)
     exit(29)
+if ' ' in args.regionsFile:
+    print('WARNING!' +'/n'+'There is space in the directory of regions file. We recommend you to delete it to avoid errors')
 if args.primersFile and args.draftFile:
     print('ERROR! You can use only primers file OR draft primers file. Leave one of this arguments')
     logger.error('ERROR! You can use only primers file OR draft primers file. Leave one of this arguments')
     exit(30)
+if ((args.primersFile and
+     ' ' in args.primersFile) or
+    (args.draftFile and
+     ' ' in args.draftFile)):
+    print('WARNING!' +'/n'+'There is space in the directory of primers file. We recommend you to delete it to avoid errors')
 inputDir=args.regionsFile[:args.regionsFile.rfind('/')+1]
 wgref=args.wholeGenomeRef
 if not args.maxPrimerHairpinTh:
@@ -2415,6 +2503,8 @@ if not os.path.exists(wgref):
     print('#'*20+'\nERROR! Whole-genome reference file does not exist:',wgref)
     logger.error('Whole-genome reference file does not exist:'+wgref)
     exit(32)
+if ' ' in args.wholeGenomeRef:
+    print('WARNING!' +'/n'+'There is space in the directory of reference file. We recommend you to delete it to avoid errors')
 if args.snps and not args.dbSnpVcfFile:
     print('#'*20+'\nERROR! If you want to check primers for crossing SNPs, choose VCF-file with dbSNP variations (-dbsnp)!')
     logger.error('ERROR! If you want to check primers for crossing SNPs, choose VCF-file with dbSNP variations (-dbsnp)!')
@@ -2423,6 +2513,10 @@ if args.dbSnpVcfFile and not os.path.exists(args.dbSnpVcfFile):
     print('#'*20+'\nERROR! VCF-file with dbSNP variations does not exist:',args.dbSnpVcfFile)
     logger.error('VCF-file with dbSNP variations does not exist:'+args.dbSnpVcfFile)
     exit(48)
+if args.dbSnpVcfFile and ' ' in args.dbSnpVcfFile:
+    print('WARNING!' +'/n'+'There is space in the directory of SNP file. We recommend you to delete it to avoid errors')
+
+chrToChr(args)
 
 # We make primer3 parameters for each input position
 ## Later we will send them into multithreading pool
@@ -2434,12 +2528,15 @@ allRegions,regionsNames,regionsCoords,regionNameToChrom,regionNameToMultiplex,re
 if args.primersFile:
     print('Reading file with primers...')
     logger.info('Reading file with primers...')
+    # inputInternalPrimers and amplfiedRegions contain chromosome names
+    # But regionsCoords contains chromosome numbers
     inputInternalPrimers,amplfiedRegions=readPrimersFile(args.primersFile)
     # Check that input primers cover all input regions
     chromosomesWithUncoveredRegions=[]
     for chrom,coveredRegions in amplfiedRegions.items():
+        chromInt=nameToNum[chrom]
         try:
-            inter=coveredRegions.intersection(regionsCoords[chrom])
+            inter=coveredRegions.intersection(regionsCoords[chromInt])
         except KeyError:
             print('ERROR! Inconsistent chromosome names in two dictionaries:')
             logger.error('Inconsistent chromosome names in two dictionaries:')
@@ -2448,7 +2545,7 @@ if args.primersFile:
             print('amplfiedRegions:',amplfiedRegions.keys())
             logger.error('amplfiedRegions: '+str(amplfiedRegions.keys()))
             exit(50)
-        if len(inter)!=len(regionsCoords[chrom]):
+        if len(inter)!=len(regionsCoords[chromInt]):
             chromosomesWithUncoveredRegions.append(chrom)
     if len(chromosomesWithUncoveredRegions)>0:
         print('ERROR! Some regions of the following chromosomes are not covered with input primers:')
@@ -2457,8 +2554,8 @@ if args.primersFile:
             print(chrom)
             logger.error(chrom)
         exit(34)
-    # If user wants to automatically sort primers pairs by multiplexes
-    ## We create file for storing all problematic pairs of primers pairs
+    # If user wants to automatically sort primers pairs into multiplex reactions
+    ## We create file for storing all problematic pairs of primer pairs
     if len(regionNameToMultiplex)>0:
         multiplexProblemsWB=xls.Workbook(args.primersFile[:-4]+'_amplicons_multiplex_incompatibility.xls')
         mpws=multiplexProblemsWB.add_worksheet('Internal_Primers')
@@ -2492,7 +2589,7 @@ if args.primersFile:
         rightPrimerTm=int(primer3.calcTm(internalPrimers[1],mv_conc=args.mvConc,dv_conc=args.dvConc,dntp_conc=args.dntpConc,dna_conc=args.primerConc))
         leftGC=int(internalPrimers[13])
         rightGC=int(internalPrimers[14])
-        chrom=str(int(internalPrimers[3]))
+        chrom=str(internalPrimers[3])
         amplName=internalPrimers[2]
         regionName=amplName[:amplName.rfind('_')]
         wsw1.write_row(i+1,0,[i+1,internalPrimers[0],internalPrimers[1],amplName,chrom,amplStart,amplEnd,amplLen,amplBlockStart,amplBlockEnd,
@@ -2541,7 +2638,6 @@ if args.primersFile:
     print('Creating primer3 parameters for external primers design...')
     logger.info('Creating primer3 parameters for external primers design...')
     primer3Params,regionNameToChrom,amplToStartCoord=createPrimer3_parameters(allRegions,args,
-                                                                        species='human',
                                                                         designedInternalPrimers=outputInternalPrimers)
     p=ThreadPool(args.threads)
     externalPrimersNum=0
@@ -2565,7 +2661,7 @@ if args.primersFile:
     for res in results:
         res=res.get()
         doneWork+=1
-        showPercWork(doneWork,wholeWork)
+        showPercWork(doneWork,wholeWork,args.gui)
         curRegionName,primerSeqs,primersCoords,primerTms,amplLens,amplScores,primer3Params,designOutput=res
         if primerSeqs==None:
             regionsWithoutPrimers.append(curRegionName)
@@ -2585,14 +2681,10 @@ if args.primersFile:
             end=amplToStartCoord[curRegionName]+primersCoords[2*k+1][0]+1
             leftGC=round(100*(primerSeqs[2*k+0].count('G')+primerSeqs[2*k+0].count('C'))/len(primerSeqs[2*k+0]),2)
             rightGC=round(100*(primerSeqs[2*k+1].count('G')+primerSeqs[2*k+1].count('C'))/len(primerSeqs[2*k+1]),2)
-            if chrom==23 or chrom=='23':
-                chromName='X'
-            elif chrom==24 or chrom=='24':
-                chromName='Y'
-            else:
-                chromName=str(chrom)
+            chromName=chrom
+            chromInt=nameToNum[chrom]
             try:
-                out=pysam.faidx(wgref,'chr'+chromName+':'+str(start-1-100)+'-'+str(end+100))
+                out=pysam.faidx(wgref,chromName+':'+str(start-1-100)+'-'+str(end+100))
             except pysam.utils.SamtoolsError:
                 print('ERROR #49: File with reference genome is corrupted:')
                 logger.error('#49 File with reference genome is corrupted:')
@@ -2640,7 +2732,7 @@ if args.primersFile:
         print('\nAnalyzing external primers for their specificity...')
         logger.info('Analyzing external primers for their specificity...')
         specificPrimers,primersNonSpecRegionsByChrs=checkPrimersSpecificity(args.regionsFile[:-4],extPrimersInfo,args.wholeGenomeRef,
-                                                                            args.runName,args.substNum,args.threads,
+                                                                            args.runName,args.substNum,args.threads,args.gui,
                                                                             args.maxNonSpecLen,args.maxPrimerNonspec,True,str(i+1))
         print(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
         logger.info(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
@@ -2651,7 +2743,8 @@ if args.primersFile:
         primerPairsNonCoveringSNPs,primersCoveringSNPs=analyzePrimersForCrossingSNP(extPrimersInfo,
                                                                                     args.threads,
                                                                                     args.dbSnpVcfFile,
-                                                                                    args.nucNumToCheck)
+                                                                                    args.nucNumToCheck,
+                                                                                    args.gui)
         print("\n # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
         logger.info(" # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
     # Now we need to remove unspecific primer pairs
@@ -2704,7 +2797,8 @@ if args.primersFile:
         # We save primers from different pairs that form unspecific amplicons (for sorting primer pairs by multiplexs later)
         print(' Searching for nonspecific amplicons that are formed by external primers from different primer pairs...')
         logger.info(' Searching for nonspecific amplicons that are formed by external primers from different primer pairs...')
-        unspecificPrimers=getPrimerPairsThatFormUnspecificProduct(primersNonSpecRegionsByChrs,args.maxNonSpecLen)
+        unspecificPrimers=getPrimerPairsThatFormUnspecificProduct(primersNonSpecRegionsByChrs,args.maxNonSpecLen,
+                                                                  args.threads,args.gui)
         print(' # Number of external primer pairs that form unspecific product:',len(unspecificPrimers))
         logger.info(' # Number of external primer pairs that form unspecific product: '+str(len(unspecificPrimers)))
     elif not args.doBlast:
@@ -2734,7 +2828,9 @@ if args.primersFile:
                 if not fit and globalMultiplexNums.has_edge(node,regionName):
                     globalMultiplexNums.remove_edge(node,regionName)
         multiplexProblemsWB.close()
-    for chrom,coords in sorted(primersForOutput.items()):
+    for chrom,coords in sorted(primersForOutput.items(),
+                               key=lambda item:(nameToNum[item[0]],
+                                                item[1])):
         for coord,primers in sorted(coords.items()):
             for regionName,primer in primers.items():
                 try:
@@ -2849,7 +2945,7 @@ else:
         print('Analyzing primers for their specificity...')
         logger.info('Analyzing primers for their specificity...')
         specificPrimers,primersNonSpecRegionsByChrs=checkPrimersSpecificity(args.regionsFile[:-4],primersInfo,args.wholeGenomeRef,
-                                                                            args.runName,args.substNum,args.threads,
+                                                                            args.runName,args.substNum,args.threads,args.gui,
                                                                             args.maxNonSpecLen,args.maxPrimerNonspec,False,'')    
         print(' # Number of specific primer pairs:',len(specificPrimers))
         logger.info(' # Number of specific primer pairs: '+str(len(specificPrimers)))
@@ -2866,7 +2962,8 @@ else:
             # We save primers from different pairs that form unspecific amplicons (for sorting primer pairs by multiplexs later)
             print(' Searching for nonspecific amplicons that are formed by primers from different primer pairs...')
             logger.info(' Searching for nonspecific amplicons that are formed by primers from different primer pairs...')
-            unspecificPrimers=getPrimerPairsThatFormUnspecificProduct(primersNonSpecRegionsByChrs,args.maxNonSpecLen)
+            unspecificPrimers=getPrimerPairsThatFormUnspecificProduct(primersNonSpecRegionsByChrs,args.maxNonSpecLen,
+                                                                      args.threads,args.gui)
             print('\n # Number of primer pairs that form unspecific product:',len(unspecificPrimers))
             logger.info(' # Number of primer pairs that form unspecific product: '+str(len(unspecificPrimers)))
 ##            writeUnspecificPrimers(primersInfo,
@@ -2883,7 +2980,8 @@ else:
         primerPairsNonCoveringSNPs,primersCoveringSNPs=analyzePrimersForCrossingSNP(primersInfo,
                                                                                     args.threads,
                                                                                     args.dbSnpVcfFile,
-                                                                                    args.nucNumToCheck)
+                                                                                    args.nucNumToCheck,
+                                                                                    args.gui)
         if len(primersCoveringSNPs)>0:
             print(" Removing primer pairs covering high-frequent SNPs...")
             logger.info(" Removing primer pairs covering high-frequent SNPs...")
@@ -2906,17 +3004,20 @@ else:
     logger.info('Joining primer pairs to amplified blocks...')
     p=ThreadPool(args.threads)
     results=[]
-    for chrom in sorted(regionsCoords.keys()):
-        results.append(p.apply_async(joinAmpliconsToBlocks,(sorted(regionsCoords[chrom]),primersInfoByChrom[chrom],args.maxAmplLen,chrom)))
+    for chromInt in sorted(regionsCoords.keys()):
+        chrom=numToName[chromInt]
+        results.append(p.apply_async(joinAmpliconsToBlocks,(sorted(regionsCoords[chromInt]),
+                                                            primersInfoByChrom[chromInt],
+                                                            args.maxAmplLen,chromInt,
+                                                            args.returnVariantsNum)))
     doneWork=0
     wholeWork=len(results)
-    showPercWork(doneWork,wholeWork)
+    showPercWork(doneWork,wholeWork,args.gui)
     for res in results:
-        chrom,finalShortestPaths=res.get()
-        allRegionsAmplifiedBlocks[chrom]=finalShortestPaths
+        chromInt,finalShortestPaths=res.get()
+        allRegionsAmplifiedBlocks[chromInt]=finalShortestPaths
         doneWork+=1
-        showPercWork(doneWork,wholeWork)
-        
+        showPercWork(doneWork,wholeWork,args.gui)
     # We need to show user statistics of amplified blocks
     totalAmplicons=0
     totalMultiplexVariants=1
@@ -2924,11 +3025,12 @@ else:
     blockToChromNum={}
     # One chromosome may contain severel "amplified blocks"
     # Later we can combine primer pairs from different amplified blocks in different variants
-    for chrom,blocks in sorted(allRegionsAmplifiedBlocks.items()):
-        print('\n # Total number of amplified blocks on chromosome',str(chrom)+':',len(allRegionsAmplifiedBlocks[chrom]))
-        logger.info(' # Total number of amplified blocks on chromosome '+str(chrom)+': '+str(len(allRegionsAmplifiedBlocks[chrom])))
+    for chromInt,blocks in sorted(allRegionsAmplifiedBlocks.items()):
+        chrom=numToName[chromInt]
+        print('\n # Total number of amplified blocks on chromosome',str(chrom)+':',len(allRegionsAmplifiedBlocks[chromInt]))
+        logger.info(' # Total number of amplified blocks on chromosome '+str(chrom)+': '+str(len(allRegionsAmplifiedBlocks[chromInt])))
         for i,block in enumerate(blocks):
-            blockToChromNum[blockNum]=[chrom,i]
+            blockToChromNum[blockNum]=[chromInt,i]
             blockNum+=1
             totalMultiplexVariants*=len(block)
             for mult in block:
@@ -2949,7 +3051,8 @@ else:
                                            unspecificPrimers,
                                            args.returnVariantsNum,
                                            args.triesToGetCombination,
-                                           totalMultiplexVariants)
+                                           totalMultiplexVariants,
+                                           args.gui)
     print('Writing to output...')
     logger.info('Writing to output...')
     colsWidth1=[5,30,30,15,6,12,12,13,12,12,
@@ -2983,7 +3086,9 @@ else:
         globalMultiplexNums=nx.Graph()
         globalMultiplexesContainer={}
         amplNameToRowNum={}
-        for chrom,coords in comb.items():
+        # Chromosome in combination is chromosome number but in string format
+        for chromIntStr,coords in sorted(comb.items(),
+                                         key=lambda item:int(item[0])):
             for coord,c in sorted(coords.items()):
                 coordsNum+=1
                 rFile.write('\n'.join(['>'+primersToAmplNames['_'.join(c)][0]+'_F',
@@ -3008,13 +3113,8 @@ else:
                     rightGC=0
                 amplLen=amplEnd-amplStart+1
                 leftPrimerTm,rightPrimerTm=primersInfo['_'.join(c)][1]
-                if chrom==23 or chrom=='23':
-                    chromName='X'
-                elif chrom==24 or chrom=='24':
-                    chromName='Y'
-                else:
-                    chromName=str(chrom) 
-                out=pysam.faidx(wgref,'chr'+chromName+':'+str(amplStart-1-100)+'-'+str(amplEnd+100))
+                chromName=str(numToName[int(chromIntStr)])
+                out=pysam.faidx(wgref,chromName+':'+str(amplStart-1-100)+'-'+str(amplEnd+100))
                 lines=out.split('\n')
                 if lines[1]=='':
                     print('ERROR! Extracted sequence has no length')
@@ -3025,12 +3125,12 @@ else:
                 amplName=primersToAmplNames['_'.join(c)][0]
                 regionName=amplName[:amplName.rfind('_')]
                 if len(regionNameToMultiplex)>0:
-                    wsw1.write_row(rowNum,0,[rowNum,c[0],c[1],amplName,chrom,amplStart,amplEnd,amplLen,amplBlockStart,amplBlockEnd,
+                    wsw1.write_row(rowNum,0,[rowNum,c[0],c[1],amplName,chromName,amplStart,amplEnd,amplLen,amplBlockStart,amplBlockEnd,
                                             leftPrimerTm,rightPrimerTm,len(c[0]),len(c[1]),leftGC,rightGC,','.join(regionNameToMultiplex[regionName])])
                 else:
-                    wsw1.write_row(rowNum,0,[rowNum,c[0],c[1],amplName,chrom,amplStart,amplEnd,amplLen,amplBlockStart,amplBlockEnd,
+                    wsw1.write_row(rowNum,0,[rowNum,c[0],c[1],amplName,chromName,amplStart,amplEnd,amplLen,amplBlockStart,amplBlockEnd,
                                             leftPrimerTm,rightPrimerTm,len(c[0]),len(c[1]),leftGC,rightGC])
-                outputInternalPrimers[primersToAmplNames['_'.join(c)][0]]=[c[0],c[1],amplName,str(chrom),
+                outputInternalPrimers[primersToAmplNames['_'.join(c)][0]]=[c[0],c[1],amplName,chromName,
                                                                            amplStart,amplEnd,amplLen,amplBlockStart,
                                                                            amplBlockEnd,leftPrimerTm,rightPrimerTm,len(c[0]),
                                                                            len(c[1]),leftGC,rightGC]
@@ -3047,9 +3147,10 @@ else:
                     # We choose multiplex all of previously added primers that fit 
                     # Get input region name that current amplicon covers
                     if len(globalMultiplexNums)>0:
-                        for node in globalMultiplexNums.nodes():
+                        currentGlobalMultiplexNums=deepcopy(globalMultiplexNums)
+                        for node in currentGlobalMultiplexNums.nodes():
                             try:
-                                fit,problem=checkPrimersFit(c+[chrom,amplStart,amplEnd],
+                                fit,problem=checkPrimersFit(c+[chromName,amplStart,amplEnd],
                                                             outputInternalPrimers[node],
                                                             args.minMultDimerdG1,args.minMultDimerdG2,
                                                             unspecificPrimers,
@@ -3115,7 +3216,7 @@ else:
             else:
                 print('\nCreating primer3 parameters for external primers design, combination variant '+str(i+1)+'...')
                 logger.info('Creating primer3 parameters for external primers design, combination variant '+str(i+1)+'...')
-                primer3Params,regionNameToChrom,amplToStartCoord=createPrimer3_parameters(allRegions,args,species='human',
+                primer3Params,regionNameToChrom,amplToStartCoord=createPrimer3_parameters(allRegions,args,
                                                                                     designedInternalPrimers=outputInternalPrimers,
                                                                                     regionNameToPrimerType=regionNameToPrimerType,
                                                                                     regionNameToChrom=regionNameToChrom)
@@ -3143,7 +3244,7 @@ else:
             primerDesignExplains={}
             for res in results:
                 doneWork+=1
-                showPercWork(doneWork,wholeWork)
+                showPercWork(doneWork,wholeWork,args.gui)
                 curRegionName,primerSeqs,primersCoords,primerTms,amplLens,amplScores,primer3File,designOutput=res.get()
                 if primerSeqs==None:
                     regionsWithoutPrimers.append(curRegionName)
@@ -3182,14 +3283,9 @@ else:
                     else:
                         rightGC=0
                         end=amplToStartCoord[curRegionName]+args.maxExtAmplLen-1
-                    if chrom==23 or chrom=='23':
-                        chromName='X'
-                    elif chrom==24 or chrom=='24':
-                        chromName='Y'
-                    else:
-                        chromName=str(chrom)
+                    chromName=chrom
                     try:
-                        out=pysam.faidx(wgref,'chr'+chromName+':'+str(start-1-100)+'-'+str(end+100))
+                        out=pysam.faidx(wgref,chromName+':'+str(start-1-100)+'-'+str(end+100))
                     except pysam.utils.SamtoolsError:
                         print('ERROR! File with reference genome is probably corrupted:')
                         print(wgref)
@@ -3243,7 +3339,7 @@ else:
                 print('\nAnalyzing external primers for their specificity...')
                 logger.info('Analyzing external primers for their specificity...')
                 specificPrimers,primersNonSpecRegionsByChrs=checkPrimersSpecificity(args.regionsFile[:-4],extPrimersInfo,args.wholeGenomeRef,
-                                                                                    args.runName,args.substNum,args.threads,
+                                                                                    args.runName,args.substNum,args.threads,args.gui,
                                                                                     args.maxNonSpecLen,args.maxPrimerNonspec,True,str(i+1))
                 print(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
                 logger.info(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
@@ -3259,7 +3355,8 @@ else:
                 primerPairsNonCoveringSNPs,primersCoveringSNPs=analyzePrimersForCrossingSNP(extPrimersInfo,
                                                                                             args.threads,
                                                                                             args.dbSnpVcfFile,
-                                                                                            args.nucNumToCheck)
+                                                                                            args.nucNumToCheck,
+                                                                                            args.gui)
                 print("\n # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
                 logger.info(" # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
             # Now we need to remove unspecific primer pairs
@@ -3312,7 +3409,8 @@ else:
                 # We save primers from different pairs that form unspecific amplicons (for sorting primer pairs by multiplexs later)
                 print(' Searching for nonspecific amplicons that are formed by external primers from different primer pairs...')
                 logger.info(' Searching for nonspecific amplicons that are formed by external primers from different primer pairs...')
-                unspecificPrimers=getPrimerPairsThatFormUnspecificProduct(primersNonSpecRegionsByChrs,args.maxNonSpecLen)
+                unspecificPrimers=getPrimerPairsThatFormUnspecificProduct(primersNonSpecRegionsByChrs,args.maxNonSpecLen,
+                                                                          args.threads,args.gui)
                 print(' # Number of external primer pairs that form unspecific product:',len(unspecificPrimers))
                 logger.info(' # Number of external primer pairs that form unspecific product: '+str(len(unspecificPrimers)))
             elif not args.doBlast:
@@ -3344,7 +3442,9 @@ else:
                 multiplexProblemsWB.close()
             rowNum=1
             rExternalFile=open(inputFileBase+'_NGS_primerplex'+runName+'_primers_combination_'+str(i+1)+'_external_amplicons.fa','w')
-            for chrom,coords in sorted(primersForOutput.items()):
+            for chrom,coords in sorted(primersForOutput.items(),
+                                       key=lambda item:(nameToNum[item[0]],
+                                                        item[1])):
                 for coord,primers in sorted(coords.items()):
                     for regionName,primer in primers.items():
                         try:
@@ -3428,8 +3528,9 @@ else:
         wbw.close()
         print()
         logger.info('\n')
+print('NGS-PrimerPlex finished!')
+logger.info('NGS-PrimerPlex finished!')
 
 # TODO:
 # make function that writes list of unspecific products into file
 # make function that reads list of unspecific products from file
-# add arguments which will get chromosome numbers that match some chromosomes as letters (e.g. X - 23; Y - 24) for other organisms
