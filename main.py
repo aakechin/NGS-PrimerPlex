@@ -765,6 +765,9 @@ class AddAdapters(Screen):
             inputFilePath2=self.ids['filename_text_input_adapters'].text
             inputDir2=os.path.dirname(inputFilePath2)
             inputFileName2=os.path.basename(inputFilePath2)
+            drive=os.path.splitdrive(inputDir2)
+            if drive[0]!='':
+                inputDir2='/'+drive[0].replace(':','')+drive[1].replace('\\','/')
             mounts.append(Mount(target='/tags',
                                 source=inputDir2,
                                 type='bind'))
