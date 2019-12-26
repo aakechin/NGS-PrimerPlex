@@ -68,6 +68,7 @@ Also, for searching non-target primer hybridization, it uses BWA, so you need to
 
 `sudo apt-get install bwa`
 
+### Reference genome
 Then, download reference genome sequence (e.g. [hg19](http://hgdownload.soe.ucsc.edu/goldenPath/hg19/bigZips/hg19.2bit) or [hg38](http://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.2bit) human genome version), convert it to FASTA-file with [twoBitToFa](http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64/twoBitToFa) (if it is not in this format) and index it with BWA:
 
 ```
@@ -87,6 +88,10 @@ For hg38:
 wget ftp://ftp.ncbi.nih.gov/snp/organisms/human_9606_b151_GRCh38p7/VCF/common_all_20180418.vcf.gz
 wget ftp://ftp.ncbi.nih.gov/snp/organisms/human_9606_b151_GRCh38p7/VCF/common_all_20180418.vcf.gz.tbi
 ```
+#### Reference genome for other organisms than human
+To prepare your own reference genome, you need to prepare one FASTA-file with whole reference genome and one directory (it can be the same as for FASTA-file) with GenBank-files for each of an organism chromosome. For example, to prepare reference genome for Arabidopsis thaliana, download reference genome FASTA-file from [Genome database of NCBI](https://www.ncbi.nlm.nih.gov/genome/?term=arabidopsis+thaliana): click "genome" in the line "Download sequences in FASTA format for __genome__". Extract downloaded archive.
+
+Then, download each chromosome of A. thaliana in GenBank format. To do it, go to the bottom of the Genome database page for A. thaliana and click on each chromosome in format like "NC_003070.9". On the opened page (https://www.ncbi.nlm.nih.gov/nuccore/NC_003070.9 should be opened) at the right menu "Customize view" choose "Customize" and then "Show sequence". Press "Update view". At the top of the page click "Send to:" -> File -> "Create File". Call the downloaded file in the following format "chr<chromosome number>", where chromosome number is a number of chromosome in the order of all chromosomes. For example, for human chrX will be chr23.db, chrY will be chr24.gb, chrM will be chr25.gb; for A. thaliana chr1 will be chr1.gb, but chrM will be chr6.gb. You may number all chrosomes as you wish, because later these numbers will not be used by other scripts, excluding getGeneRegions.py.
 
 And, finally, you can run your primer design:
 
