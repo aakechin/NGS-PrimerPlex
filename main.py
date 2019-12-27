@@ -27,7 +27,6 @@ import threading
 import json
 from docker.types import Mount
 from functools import partial
-from circular_progress_bar import CircularProgressBar
 
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
 global_image_names=['aakechin/ngs-primerplex:native',
@@ -708,10 +707,6 @@ class AddAdapters(Screen):
 
     container=None
     
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        Window.bind(on_resize=self.on_window_resize)
-        
     def dismiss_popup(self):
         self._popup.dismiss()
 
@@ -738,7 +733,7 @@ class AddAdapters(Screen):
     def startAdding(self,*args):
         app=App.get_running_app()
         app.root.ids['menu_screen'].ids['add_adapters_menu_button'].background_color=(0.15,0.35,0.54,1)
-        self.ids['add_primers_progress_bar'].value=10
+        self.ids['add_adapters_log'].text='Started adding adapters...'
         t=threading.Thread(target=self.runAdding)
         t.start()
         
@@ -792,21 +787,111 @@ class AddAdapters(Screen):
             exit(2)
         for stat in self.container.stats():
             containerStats=json.loads(stat.decode('utf-8'))
+            newLog=self.container.logs().decode('utf-8')
+            if newLog!='':
+                writtenLog=self.ids['add_adapters_log'].text
+                if newLog!=writtenLog:
+                    logParts=newLog.split('\n')
+                    newLogParts=[]
+                    for n,part in enumerate(logParts):
+                        if '%' in part:
+                            if n<len(logParts)-1 and '%' not in logParts[n+1]:
+                                newLogParts.append(part)
+                            elif n==len(logParts)-1:
+                                newLogParts.append(part)
+                        else:
+                            newLogParts.append(part)
+                    self.ids['add_adapters_log'].text='\n'.join(newLogParts)
             if len(containerStats['pids_stats'])==0:
                 break
-        self.container.wait()
-        self.ids['add_primers_progress_bar'].value=100
         app=App.get_running_app()
         app.root.ids['menu_screen'].ids['add_adapters_menu_button'].background_color=(0.226,0.527,0.273,1)
         self.container.remove()
+
+class ConvertToDraft(Screen):
+
+    container=None
+    
+    def dismiss_popup(self):
+        self._popup.dismiss()
+
+    def show_load_primers(self,title='Load file'):
+        content = LoadDialog(load=self.load_primers, cancel=self.dismiss_popup)
+        self._popup = Popup(title=title, content=content,
+                            size_hint=(0.9, 0.9))
+        self._popup.open()
         
-    def on_enter(self,**kwargs):
-        self.ids['add_primers_progress_bar']._draw()
-        self.ids['add_primers_progress_bar'].value=0
+    def load_primers(self, path, filename,):
+        self.ids['filename_text_input_primers'].text=os.path.join(path,filename[0])
+        self.dismiss_popup()
         
-    def on_window_resize(self,*args):
-        self.ids['add_primers_progress_bar']._draw()
-        self.ids['add_primers_progress_bar'].value=0
+    def startConverting(self,*args):
+        app=App.get_running_app()
+        app.root.ids['menu_screen'].ids['convert_to_draft_menu_button'].background_color=(0.15,0.35,0.54,1)
+        self.ids['convert_to_draft_log'].text='Started converting to draft-primers...'
+        t=threading.Thread(target=self.runAdding)
+        t.start()
+        
+    def runAdding(self,*args):
+        global global_image_names,available_images
+        try:
+            client=docker.from_env()
+        except:
+            print('ERROR (1)! Could not connect to docker VM')
+            exit(1)
+        inputFilePath=self.ids['filename_text_input_primers'].text
+        inputDir=os.path.dirname(inputFilePath)
+        inputFileName=os.path.basename(inputFilePath)
+        drive=os.path.splitdrive(inputDir)
+        if drive[0]!='':
+            inputDir='/'+drive[0].replace(':','')+drive[1].replace('\\','/')
+        mounts=[Mount(target='/input',
+                      source=inputDir,
+                      type='bind')]
+        cmd=['python3',
+             '/NGS-PrimerPlex/convertToDraftFile.py',
+             '-in','/input/'+inputFileName,
+             '-out','/input/'+inputFileName[:inputFileName.rfind('.')]+'.draft.xls']
+        for image_name,available_image in zip(global_image_names,
+                                              available_images):
+            # If image without reference is available, use it
+            # Elif image with zipped hg19 available, use it
+            if available_image:
+                break
+        try:
+            self.container=client.containers.run(image_name,
+                                                 ' '.join(cmd),
+                                                 mounts=mounts,
+                                                 detach=True,
+                                                 entrypoint='')
+        except:
+            print('ERROR (2)! Could not run image:')
+            print('Image name: aakechin/ngs-primerplex')
+            print('Command: '+' '.join(cmd))
+            print('Mounts: '+', '.join(map(str,mounts)))
+            exit(2)
+        for stat in self.container.stats():
+            containerStats=json.loads(stat.decode('utf-8'))
+            newLog=self.container.logs().decode('utf-8')
+            if newLog!='':
+                writtenLog=self.ids['convert_to_draft_log'].text
+                if newLog!=writtenLog:
+                    logParts=newLog.split('\n')
+                    newLogParts=[]
+                    for n,part in enumerate(logParts):
+                        if '%' in part:
+                            if n<len(logParts)-1 and '%' not in logParts[n+1]:
+                                newLogParts.append(part)
+                            elif n==len(logParts)-1:
+                                newLogParts.append(part)
+                        else:
+                            newLogParts.append(part)
+                    self.ids['convert_to_draft_log'].text='\n'.join(newLogParts)
+            if len(containerStats['pids_stats'])==0:
+                break
+        app=App.get_running_app()
+        app.root.ids['menu_screen'].ids['convert_to_draft_menu_button'].background_color=(0.226,0.527,0.273,1)
+        self.container.remove()
 
 class NGS_PrimerPlexApp(App):
     pass

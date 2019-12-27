@@ -20,12 +20,16 @@ ScreenManager:
         id: add_adapters
         name: 'AddAdapters'
         manager: 'screen_manager'
+    ConvertToDraft:
+        id: convert_to_draft
+        name: 'ConvertToDraft'
+        manager: 'screen_manager'
 
 <MenuScreen>:
     id:menu_screen
     BoxLayout:
         orientation:'vertical'
-        spacing:40
+        spacing:20
         padding:(10,5,10,10)
         canvas:
             Color:
@@ -118,6 +122,21 @@ ScreenManager:
             size_hint:0.5,0.3
             pos_hint:{'x':0.25,'y':0}
             on_press:app.root.current='AddAdapters'
+        Button:
+            id:convert_to_draft_menu_button
+            canvas.before:
+                Color:
+                    rgba:0,0,1,1
+                Rectangle:
+                    pos:self.pos
+                    size:self.size
+            bold:True
+            background_normal:''
+            background_color:0.15,0.35,0.54,1
+            text:'Convert to draft-primers'
+            size_hint:0.5,0.3
+            pos_hint:{'x':0.25,'y':0}
+            on_press:app.root.current='ConvertToDraft'
 
 <SettingsScreen>:
     id:settings
@@ -1514,7 +1533,8 @@ ScreenManager:
     id:add_adapters
     BoxLayout:
         orientation:'vertical'
-        padding:(10,10,10,10)
+        padding:(10,10,10,0)
+        spacing:10
         canvas.before:
             Color:
                 rgba:0.8,0.8,0.8,1
@@ -1575,23 +1595,32 @@ ScreenManager:
                     size_hint:1,0.5
                     text:'Browse'
                     on_press: add_adapters.show_load_adapters('Choose file with adapters')
-        # Progress bar
-        CircularProgressBar:
-            id:add_primers_progress_bar
-            size_hint:1,0.3
-            max:100
-            pos:root.width/2,root.height/2
-            widget_size:100
-            thickness:5
-            cap_precision:1
-            value:0
-            pos_hint:{'x':0.43,'y':0}
         Label:
+            size_hint:1,0.1
+        # Logging
+        TextInput:
             size_hint:1,0.2
+            id:add_adapters_log
+            text:'Here will be log output...'
+            multiline:True
+            readonly:True
+            font_size:14
+        Label:
+            size_hint:1,0.1
         # Run button                        
         Button:
+            canvas.before:
+                Color:
+                    rgba:0,0,1,1
+                Rectangle:
+                    pos:self.pos
+                    size:self.size
+            bold:True
+            disabled:False
+            background_normal:''
+            background_color:0.15,0.35,0.54,1
             text:'Add adapters to primers'
-            size_hint:0.5,0.1
+            size_hint:0.5,0.06
             pos_hint:{'x':0.25,'y':0}
             min_state_time:0
             always_release:True
@@ -1600,9 +1629,93 @@ ScreenManager:
         Button:
             text:'< Back to Main menu'
             on_press:app.root.current='MenuScreen'
-            size_hint:0.5,0.1
-            height:dp(40)
+            size_hint:1,0.06
+
+<ConvertToDraft>:
+    id:convert_to_draft
+    BoxLayout:
+        orientation:'vertical'
+        padding:(10,10,10,0)
+        spacing:10
+        canvas.before:
+            Color:
+                rgba:0.8,0.8,0.8,1
+            Rectangle:
+                pos:self.pos
+                size:self.size
+        Label:
+            size_hint:1,0.05
+            halign:'left'
+            valign:'middle'
+            color:0,0,0,1
+            foreground_color:0,0,0,1
+            text:'Choose file with primers designed by NGS-PrimerPlex:'
+        BoxLayout:
+            orientation:'horizontal'
+            size_hint:1,0.1
+            spacing:10
+            # Part with written file names
+            BoxLayout:
+                id:browse_text_input
+                orientation:'vertical'
+                size_hint_x:0.7
+                size_hint_y:1
+                TextInput:
+                    id:filename_text_input_primers
+                    text:'<Chosen file with primers>'
+                    size_hint:1,0.5
+                    background_color:1,1,1,1
+                    color:0,0,0,1
+                    foreground_color:0,0,0,1
+                    disabled_foreground_color:0,0,0,1
+                    hint_text_color:0,0,0,1
+                    multiline:True
+                    readonly:False
+                    write_tab: False
+            # Part with buttons
+            BoxLayout:
+                id:browse_button_box
+                orientation:'vertical'
+                size_hint:0.3,1
+                Button:
+                    size_hint:1,0.5
+                    text:'Browse'
+                    on_press: convert_to_draft.show_load_primers('Choose file with primers')
+        Label:
+            size_hint:1,0.2
+        # Logging
+        TextInput:
+            size_hint:1,0.2
+            id:convert_to_draft_log
+            text:'Here will be log output...'
+            multiline:True
+            readonly:True
+            font_size:14
+        Label:
+            size_hint:1,0.1
+        # Run button                        
+        Button:
+            canvas.before:
+                Color:
+                    rgba:0,0,1,1
+                Rectangle:
+                    pos:self.pos
+                    size:self.size
+            bold:True
+            disabled:False
+            background_normal:''
+            background_color:0.15,0.35,0.54,1
+            text:'Start'
+            size_hint:0.5,0.06
             pos_hint:{'x':0.25,'y':0}
+            min_state_time:0
+            always_release:True
+            on_press:
+                convert_to_draft.startConverting()
+        Button:
+            text:'< Back to Main menu'
+            on_press:app.root.current='MenuScreen'
+            size_hint:1,0.06
 
 <LoadDialog>:
     BoxLayout:
