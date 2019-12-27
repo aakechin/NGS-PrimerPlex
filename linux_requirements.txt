@@ -1,0 +1,9 @@
+biopython
+argparse
+primer3-py
+logging
+pysam
+xlrd
+xlsxwriter
+networkx == 1.11
+numpy
