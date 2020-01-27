@@ -83,17 +83,9 @@ def createGeneNameToChromosomeFile(refDir):
             print(refDir)
             exit(10)
     geneNameToChromosomes={}
-    p=re.compile('(\w+)\.gb')
     for d in sorted(ds):
-        m=p.findall(os.path.basename(d))
-        if len(m)==0:
-            print('ERROR (11)! The following GenBank-file has incorrect format of name:')
-            print(os.path.basename(d))
-            print('It should have name in the following format: chr1.gb')
-            print('Only chromosome numbers are accepted. Rename e.g. chrX.gb into chr23.gb, chrY.gb into chr24.gb')
-            exit(11)
         print(os.path.basename(d))
-        chromNumOrName=m[0]
+        chromNumOrName=os.path.splitext(os.path.basename(d))[0]
         try:
             chromNum=int(chromNumOrName)
             if int(chromNum) in numToName.keys():
@@ -131,7 +123,7 @@ def createGeneNameToChromosomeFile(refDir):
         if d[-3:]=='.gz':
             data=SeqIO.read(gzip.open(d,'rt'),'genbank')
         else:
-            data=SeqIO.read(d,'genbank')        
+            data=SeqIO.read(d,'genbank')
         for f in data.features:
             if f.type!='gene':
                 continue
