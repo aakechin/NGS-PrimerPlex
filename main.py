@@ -262,7 +262,8 @@ class ExtractRegions(Screen):
         rows=[]
         # Reference directory
         refDir=self.ids['genbank_directory'].text
-        if refDir=='<Chosen directory with GenBank-files>':
+        if (refDir=='<Chosen directory with GenBank-files>' or
+            refDir==''):
             refDir='/NGS-PrimerPlex/hg19/'
         else:
             if not os.path.isdir(refDir):
@@ -271,13 +272,15 @@ class ExtractRegions(Screen):
                 refDir+=os.path.sep
         # Reference genome
         wgRefPath=self.ids['wgref_file'].text
-        if wgRefPath=='<Chosen reference genome FASTA-file>':
+        if (wgRefPath=='<Chosen reference genome FASTA-file>' or
+            wgRefPath==''):
             wgRefPath='/NGS-PrimerPlex/hg19/ucsc.hg19.fasta'
         wgRefDir=os.path.dirname(wgRefPath)
         wgRefName=os.path.basename(wgRefPath)
         # Output file
         outputFilePath=self.ids['output_file'].text
-        if outputFilePath=='<Chosen output-file>':
+        if (outputFilePath=='<Chosen output-file>' or
+            outputFilePath==''):
             self.ids['log_text_input'].text='ERROR! Choose file for output!'
             return(None)
         outputFileDir=os.path.dirname(outputFilePath)
@@ -451,32 +454,37 @@ class DesignPrimers(Screen):
         app.root.ids['menu_screen'].ids['design_primers_menu_button'].background_color=(0.15,0.35,0.54,1)
         # Regions file
         regionsFilePath=self.ids['regions_file'].text
-        if regionsFilePath=='<Choose file with target genome regions>':
+        if (regionsFilePath=='<Choose file with target genome regions>' or
+            regionsFilePath==''):
             self.ids['design_primers_log'].text='ERROR! Choose file with target genome regions!'
             return(None)
         regionsFileDir=os.path.dirname(regionsFilePath)
         regionsFileName=os.path.basename(regionsFilePath)
         # Draft primers
         draftFilePath=self.ids['draft_file'].text
-        if draftFilePath=='<Choose file with draft list of primers>':
+        if (draftFilePath=='<Choose file with draft list of primers>' or
+            draftFilePath==''):
             draftFilePath=None
         else:
             draftFileDir=os.path.dirname(draftFilePath)
             draftFileName=os.path.basename(draftFilePath)
         # Internal primers
         primersFilePath=self.ids['primers_file'].text
-        if primersFilePath=='<Choose file with designed internal primers>':
+        if (primersFilePath=='<Choose file with designed internal primers>' or
+            primersFilePath==''):
             primersFilePath=None
         else:
             primersFileDir=os.path.dirname(primersFilePath)
             primersFileName=os.path.basename(primersFilePath)
         # Reference genome
         wgRefPath=self.ids['wgref_file'].text
-        if wgRefPath=='<Chosen reference genome FASTA-file or leave it as it is to use hg19>':
+        if (wgRefPath=='<Chosen reference genome FASTA-file or leave it as it is to use hg19>' or
+            wgRefPath==''):
             wgRefPath='/NGS-PrimerPlex/hg19/ucsc.hg19.fasta'
         # VCF-file with SNPs
         snpsFilePath=self.ids['snps_file'].text
-        if snpsFilePath=='<To check for covering SNPs choose VCF-file with SNPs>':
+        if (snpsFilePath=='<To check for covering SNPs choose VCF-file with SNPs>' or
+            snpsFilePath==''):
             snpsFilePath=None
         else:
             snpsFileDir=os.path.dirname(snpsFilePath)
