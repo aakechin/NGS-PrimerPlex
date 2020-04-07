@@ -28,11 +28,11 @@ global thisDir,nameToNum,numToName
 thisDir=os.path.dirname(os.path.realpath(__file__))+'/'
 
 # Section of functions
-def chrToChr(args):
+def chrToChr(args,refFa):
     global nameToNum,numToName
     nameToNum={}
     numToName={}
-    refFa=pysam.FastaFile(args.wholeGenomeRef)
+##    refFa=pysam.FastaFile(args.wholeGenomeRef)
     for i,ch in enumerate(refFa.references):
         nameToNum[ch]=i+1
         numToName[i+1]=ch
@@ -181,7 +181,7 @@ def readPrimersFile(primersFile):
         internalPrimers.append(row[1:16])
     return(internalPrimers,amplifiedRegions)
 
-def createPrimer3_parameters(pointRegions,args,
+def createPrimer3_parameters(pointRegions,args,refFa,
                              designedInternalPrimers=None,
                              regionNameToPrimerType=None,
                              regionNameNeedToBeWholeLen=None,
@@ -278,14 +278,8 @@ def createPrimer3_parameters(pointRegions,args,
                                                      args.maxExtAmplLen,args.minPrimerShift,
                                                      args.minPrimerLen])))
                 exit(54)
-            lines=pysam.faidx(wgref,chromName+':'+str(chrTargetSeqStart)+'-'+str(amplBlockEnd+(args.maxExtAmplLen-args.minPrimerShift-args.minPrimerLen)+1)).split('\n')
-            if lines[1]=='':
-                print('ERROR #7: Extracted sequence has no length')
-                logger.error('#7 Extracted sequence has no length')
-                print(chromName,start-1-args.maxAmplLen,end+args.maxAmplLen)
-                logger.error(', '.join(map(str,[chromName,start-1-args.maxAmplLen,end+args.maxAmplLen])))
-                exit(7)
-            regionSeq=''.join(lines[1:-1]).upper()
+            regionSeq=extractGenomeSeq(refFa,chromName,chrTargetSeqStart,
+                                       amplBlockEnd+(args.maxExtAmplLen-args.minPrimerShift-args.minPrimerLen)+1)
             targetRegion=str(amplBlockStart-args.minPrimerShift-chrTargetSeqStart)+','+str(amplBlockEnd-amplBlockStart+1+2*args.minPrimerShift)
             targetRegionStart=amplBlockStart-args.minPrimerShift-chrTargetSeqStart
             targetRegionEnd=targetRegionStart+(amplBlockEnd-amplBlockStart+1+2*args.minPrimerShift)-1
@@ -345,44 +339,63 @@ def createPrimer3_parameters(pointRegions,args,
                 ## So we need to check if primers are designed for human genome and chromosomes may be 23 and 24 instead of X and Y
                 chromInt=nameToNum[chrom]
                 chromName=chrom
-                if start-args.maxAmplLen<0:
-                    print('ERROR! (53) Unknown error with coordinates for sequence extraction from genome:')
-                    logger.error('(53) Unknown error with coordinates for sequence extraction from genome:')
+                seqTags={}
+                seqTags['SEQUENCE_ID']='NGS_primerplex_'+curRegionName
+                if (start-args.maxAmplLen<0 and
+                    end+args.maxAmplLen>refFa.lengths[refFa.references.index(chromName)]):
+                    print('ERROR (53)! The emplicon length is more then chromosome length')
+                    logger.error('(53) The emplicon length is more then chromosome length')
                     print(chromName,start,args.maxAmplLen,end)
                     logger.error(', '.join([chromName,str(start),str(args.maxAmplLen),str(end)]))
-                    exit(53)
-                lines=pysam.faidx(wgref,chromName+':'+str(start-args.maxAmplLen)+'-'+str(end+args.maxAmplLen)).split('\n')
-                if lines[1]=='':
-                    print('ERROR! (9) Extracted sequence has no length')
-                    print(chromName,start-1-args.maxAmplLen,end+args.maxAmplLen)
-                    exit(9)
-                regionSeq=''.join(lines[1:-1]).upper()
-                seqTags={}
-                seqTags['SEQUENCE_TEMPLATE']=str(regionSeq)
-                seqTags['SEQUENCE_ID']='NGS_primerplex_'+curRegionName
-                if start==prevEnd+1:                    
-                    primerPairOkRegion=[[args.maxAmplLen-args.maxPrimerLen-2,args.maxPrimerLen+2,args.maxAmplLen+1+end-start,len(regionSeq)-args.maxAmplLen-1-(end-start)]]
+                elif start-args.maxAmplLen<0:
+                    regionSeq=extractGenomeSeq(refFa,chromName,1,end+args.maxAmplLen)
+                    seqTags['SEQUENCE_TEMPLATE']=str(regionSeq)
+                    prevEnd=end
+                    primerPairOkRegion=[[0,start-1,
+                                         end+1,args.maxAmplLen-1]]
+                    seqTags['SEQUENCE_PRIMER_PAIR_OK_REGION_LIST']=primerPairOkRegion
+                    primer3Params[curRegionName].append([deepcopy(seqTags),deepcopy(primerTags)])
+                elif end+args.maxAmplLen>refFa.lengths[refFa.references.index(chromName)]:
+                    regionSeq=extractGenomeSeq(refFa,chromName,max(1,start-args.maxAmplLen),
+                                               refFa.lengths[refFa.references.index(chromName)])
+                    seqTags['SEQUENCE_TEMPLATE']=str(regionSeq)
+                    prevEnd=end
+                    primerPairOkRegion=[[0,args.maxAmplLen-args.maxPrimerLen-2,
+                                         args.maxAmplLen+1+end-start,
+                                         len(regionSeq)-args.maxAmplLen-1-(end-start)]]
                     seqTags['SEQUENCE_PRIMER_PAIR_OK_REGION_LIST']=primerPairOkRegion
                     primer3Params[curRegionName].append([deepcopy(seqTags),deepcopy(primerTags)])
                 else:
-                    # We create 3 sets of primer pairs, that will be located in three variants:
-                    ## --------------------Mut--------------------
-                    ## 1) -=======================-------------------
-                    ## 2) -------------------=======================-
-                    ## 3) Without forcing primer location
-                    for i in range(3):
-                        # Extracting reference sequence
-                        if i==0:
-                            # Force location of the right primer to the close proximity to target
-                            primerPairOkRegion=[[0,args.maxAmplLen-1,args.maxAmplLen+1+end-start,args.maxPrimerLen+2]]
-                        elif i==1:
-                            # Force location of the left primer to the close proximity to target
-                            primerPairOkRegion=[[args.maxAmplLen-args.maxPrimerLen-2,args.maxPrimerLen+2,args.maxAmplLen+1+end-start,len(regionSeq)-args.maxAmplLen-1-(end-start)]]
-                        else:
-                            primerPairOkRegion=[[0,args.maxAmplLen-1,args.maxAmplLen+1+end-start,len(regionSeq)-args.maxAmplLen-1-(end-start)]]
+                    regionSeq=extractGenomeSeq(refFa,chromName,max(1,start-args.maxAmplLen),end+args.maxAmplLen)
+                    seqTags['SEQUENCE_TEMPLATE']=str(regionSeq)
+                    if start==prevEnd+1:                    
+                        primerPairOkRegion=[[args.maxAmplLen-args.maxPrimerLen-2,args.maxPrimerLen+2,
+                                             args.maxAmplLen+1+end-start,len(regionSeq)-args.maxAmplLen-1-(end-start)]]
                         seqTags['SEQUENCE_PRIMER_PAIR_OK_REGION_LIST']=primerPairOkRegion
                         primer3Params[curRegionName].append([deepcopy(seqTags),deepcopy(primerTags)])
-                prevEnd=end
+                    else:
+                        # We create 3 sets of primer pairs, that will be located in three variants:
+                        ## --------------------Mut--------------------
+                        ## 1) -=======================-------------------
+                        ## 2) -------------------=======================-
+                        ## 3) Without forcing primer location
+                        for i in range(3):
+                            # Extracting reference sequence
+                            if i==0:
+                                # Force location of the right primer to the close proximity to target
+                                primerPairOkRegion=[[0,args.maxAmplLen-1,args.maxAmplLen+1+end-start,args.maxPrimerLen+2]]
+                            elif i==1:
+                                # Force location of the left primer to the close proximity to target
+                                primerPairOkRegion=[[args.maxAmplLen-args.maxPrimerLen-2,args.maxPrimerLen+2,
+                                                     args.maxAmplLen+1+end-start,
+                                                     len(regionSeq)-args.maxAmplLen-1-(end-start)]]
+                            else:
+                                primerPairOkRegion=[[0,args.maxAmplLen-1,
+                                                     args.maxAmplLen+1+end-start,
+                                                     len(regionSeq)-args.maxAmplLen-1-(end-start)]]
+                            seqTags['SEQUENCE_PRIMER_PAIR_OK_REGION_LIST']=primerPairOkRegion
+                            primer3Params[curRegionName].append([deepcopy(seqTags),deepcopy(primerTags)])
+                    prevEnd=end
         return(primer3Params)
 
 def constructInternalPrimers(primer3Params,regionNameToChrom,
@@ -435,9 +448,8 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
             elif 'PRIMER_LEFT_EXPLAIN' in designOutput.keys():
                 explanation=designOutput['PRIMER_LEFT_EXPLAIN']
             if curRegionName not in primerDesignExplains:
-                primerDesignExplains[curRegionName]=[explanation]
-            else:
-                primerDesignExplains[curRegionName].append(explanation)
+                primerDesignExplains[curRegionName]=[]
+            primerDesignExplains[curRegionName].append(explanation)
             continue
         chromName=regionNameToChrom[curRegionName]
         chrom=chromName
@@ -459,7 +471,10 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
                 continue
             # Calculating coordinates of primers on a chromosome
             try:
-                primersCoords[2*i][0]=primersCoords[2*i][0]+start-args.maxAmplLen # We do not substract 1, because we want to get real coordinate, not number of symbol in coordinate
+                if start-args.maxAmplLen<0:
+                    primersCoords[2*i][0]=primersCoords[2*i][0]
+                else:
+                    primersCoords[2*i][0]=primersCoords[2*i][0]+start-args.maxAmplLen # We do not substract 1, because we want to get real coordinate, not number of symbol in coordinate
             except TypeError:
                 print('ERROR:',primersCoords)
                 exit(11)
@@ -509,7 +524,8 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
     if len(regionsWithoutPrimers)>0:
         print(' # WARNING! For ',len(regionsWithoutPrimers),'regions primers could not be designed with the defined parameters. Here are these regions:')
         logger.warn(' # WARNING! For '+str(len(regionsWithoutPrimers))+' regions primers could not be designed with the defined parameters. Here are these regions:')
-        for regionWithoutPrimer in regionsWithoutPrimers:
+        for regionWithoutPrimer in sorted(regionsWithoutPrimers,
+                                          key=lambda key:splitNameForSorting(key)):
             if args.skipUndesigned:
                 regionsCoords[nameToNum[regionNameToChrom[regionWithoutPrimer]]].remove(allRegions[regionNameToChrom[regionWithoutPrimer]][regionWithoutPrimer][1])
                 if len(regionsCoords[nameToNum[regionNameToChrom[regionWithoutPrimer]]])==0:
@@ -523,6 +539,14 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
             logger.info('   '+regionWithoutPrimer)
             print(primer3Params[regionWithoutPrimer][0][0]['SEQUENCE_TEMPLATE'])
             logger.info(primer3Params[regionWithoutPrimer][0][0]['SEQUENCE_TEMPLATE'])
+            if regionWithoutPrimer not in primerDesignExplains.keys():
+##                print(' # WARNING! For the following region there is no explanations:')
+##                logger.warn(' # WARNING! For the following region there is no explanations:')
+##                print(primerDesignExplains.keys())
+##                logger.warn(str(primerDesignExplains.keys()))
+##                print(regionWithoutPrimer)
+##                logger.warn(regionWithoutPrimer)
+                continue
             for explanation in primerDesignExplains[regionWithoutPrimer]:
                 print(explanation)
                 logger.info(explanation)
@@ -558,6 +582,7 @@ def runPrimer3(regionName,inputParams,extPrimer,args):
             logger.error(seqTags,primerTags)
             exit(13)
         numReturned=out['PRIMER_PAIR_NUM_RETURNED']
+##        print(numReturned)
         if (primerTags['PRIMER_PICK_LEFT_PRIMER']==1 and
             primerTags['PRIMER_PICK_RIGHT_PRIMER']==1 and
             numReturned>0):
@@ -582,67 +607,67 @@ def runPrimer3(regionName,inputParams,extPrimer,args):
             ## In the second iteration we do not filter primers by minimal GC-content of 3'-ends
 ##            if False in triedSofterParameters:
             i=0
-            leftEnd3_rc=str(Seq.Seq(primers[2*i][-4:]).reverse_complement())
-            rightEnd3_rc=str(Seq.Seq(primers[2*i+1][-4:]).reverse_complement())
-            if 'PRIMER_LEFT_ADAPTER' in primerTags.keys():
-                leftPrimer=primerTags['PRIMER_LEFT_ADAPTER']+primers[2*i]
-            else:
-                leftPrimer=primers[2*i]
-            if 'PRIMER_RIGHT_ADAPTER' in primerTags.keys():
-                rightPrimer=primerTags['PRIMER_RIGHT_ADAPTER']+primers[2*i+1]
-            else:
-                rightPrimer=primers[2*i]
-            leftHairpin=primer3.calcHairpin(leftPrimer,
-                                            mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
-                                            dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
-                                            dna_conc=primerTags['PRIMER_DNA_CONC'],
-                                            dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
-            rightHairpin=primer3.calcHairpin(rightPrimer,
-                                             mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
-                                             dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
-                                             dna_conc=primerTags['PRIMER_DNA_CONC'],
-                                             dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
-            leftHomodimer=primer3.calcHomodimer(leftPrimer,
+            while(i<int(len(primers)/2) and len(primers)>0):
+                leftEnd3_rc=str(Seq.Seq(primers[2*i][-4:]).reverse_complement())
+                rightEnd3_rc=str(Seq.Seq(primers[2*i+1][-4:]).reverse_complement())
+                if 'PRIMER_LEFT_ADAPTER' in primerTags.keys():
+                    leftPrimer=primerTags['PRIMER_LEFT_ADAPTER']+primers[2*i]
+                else:
+                    leftPrimer=primers[2*i]
+                if 'PRIMER_RIGHT_ADAPTER' in primerTags.keys():
+                    rightPrimer=primerTags['PRIMER_RIGHT_ADAPTER']+primers[2*i+1]
+                else:
+                    rightPrimer=primers[2*i]
+                leftHairpin=primer3.calcHairpin(leftPrimer,
                                                 mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
                                                 dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
                                                 dna_conc=primerTags['PRIMER_DNA_CONC'],
                                                 dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
-            rightHomodimer=primer3.calcHomodimer(rightPrimer,
+                rightHairpin=primer3.calcHairpin(rightPrimer,
                                                  mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
                                                  dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
                                                  dna_conc=primerTags['PRIMER_DNA_CONC'],
                                                  dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
-            heterodimer=primer3.calcHeterodimer(leftPrimer,rightPrimer,
-                                                mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
-                                                dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
-                                                dna_conc=primerTags['PRIMER_DNA_CONC'],
-                                                dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
-            leftHairpinEnd3=calcThreeStrikeEndHairpin(leftPrimer,
-                                                      mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
-                                                      dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
-                                                      dntp_conc=primerTags['PRIMER_DNTP_CONC'],
-                                                      dna_conc=primerTags['PRIMER_DNA_CONC'])
-            rightHairpinEnd3=calcThreeStrikeEndHairpin(rightPrimer,
-                                                      mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
-                                                      dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
-                                                      dntp_conc=primerTags['PRIMER_DNTP_CONC'],
-                                                      dna_conc=primerTags['PRIMER_DNA_CONC'])
-            leftHomodimerEnd3=calcThreeStrikeEndDimer(leftPrimer,leftPrimer,
-                                                      mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
-                                                      dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
-                                                      dna_conc=primerTags['PRIMER_DNA_CONC'],
-                                                      dntp_conc=primerTags['PRIMER_DNTP_CONC'])
-            rightHomodimerEnd3=calcThreeStrikeEndDimer(rightPrimer,rightPrimer,
-                                                       mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
-                                                       dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
-                                                       dna_conc=primerTags['PRIMER_DNA_CONC'],
-                                                       dntp_conc=primerTags['PRIMER_DNTP_CONC'])
-            heterodimerEnd3=calcThreeStrikeEndDimer(leftPrimer,rightPrimer,
+                leftHomodimer=primer3.calcHomodimer(leftPrimer,
                                                     mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
                                                     dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
                                                     dna_conc=primerTags['PRIMER_DNA_CONC'],
-                                                    dntp_conc=primerTags['PRIMER_DNTP_CONC'])
-            while(i<int(len(primers)/2) and len(primers)>0):
+                                                    dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
+                rightHomodimer=primer3.calcHomodimer(rightPrimer,
+                                                     mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                     dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                     dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                     dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
+                heterodimer=primer3.calcHeterodimer(leftPrimer,rightPrimer,
+                                                    mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                    dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                    dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                    dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
+                leftHairpinEnd3=calcThreeStrikeEndHairpin(leftPrimer,
+                                                          mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                          dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                          dntp_conc=primerTags['PRIMER_DNTP_CONC'],
+                                                          dna_conc=primerTags['PRIMER_DNA_CONC'])
+                rightHairpinEnd3=calcThreeStrikeEndHairpin(rightPrimer,
+                                                          mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                          dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                          dntp_conc=primerTags['PRIMER_DNTP_CONC'],
+                                                          dna_conc=primerTags['PRIMER_DNA_CONC'])
+                leftHomodimerEnd3=calcThreeStrikeEndDimer(leftPrimer,leftPrimer,
+                                                          mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                          dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                          dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                          dntp_conc=primerTags['PRIMER_DNTP_CONC'])
+                rightHomodimerEnd3=calcThreeStrikeEndDimer(rightPrimer,rightPrimer,
+                                                           mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                           dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                           dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                           dntp_conc=primerTags['PRIMER_DNTP_CONC'])
+                heterodimerEnd3=calcThreeStrikeEndDimer(leftPrimer,rightPrimer,
+                                                        mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                        dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                        dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                        dntp_conc=primerTags['PRIMER_DNTP_CONC'])
                 if (primers[2*i][-5:].count('G')+primers[2*i][-5:].count('C')<minEndGC
                     or primers[2*i+1][-5:].count('G')+primers[2*i+1][-5:].count('C')<minEndGC
                     or leftHairpinEnd3<-2
@@ -653,6 +678,20 @@ def runPrimer3(regionName,inputParams,extPrimer,args):
                     or leftHomodimerEnd3<args.minMultDimerdG1
                     or rightHomodimerEnd3<args.minMultDimerdG1
                     or heterodimerEnd3<args.minMultDimerdG1):
+##                    print(primers[2*i][-5:].count('G')+primers[2*i][-5:].count('C'),
+##                          primers[2*i+1][-5:].count('G')+primers[2*i+1][-5:].count('C'),
+##                          leftHairpinEnd3,
+##                          rightHairpinEnd3,
+##                          leftHomodimer,
+##                          rightHomodimer,
+##                          heterodimer,
+##                          leftHomodimerEnd3,
+##                          rightHomodimerEnd3,
+##                          heterodimerEnd3,
+##                          primers[2*i],
+##                          primers[2*i+1],
+##                          leftPrimer,
+##                          rightPrimer)
                     primers.pop(2*i); primers.pop(2*i)
                     primersPoses.pop(2*i); primersPoses.pop(2*i)
                     primersTms.pop(2*i); primersTms.pop(2*i)
@@ -680,32 +719,32 @@ def runPrimer3(regionName,inputParams,extPrimer,args):
                 primersProductSizes.append(0)
                 primersProductPenalty.append(out['PRIMER_LEFT_'+str(i)+'_PENALTY'])
             i=0
-            if 'PRIMER_LEFT_ADAPTER' in primerTags.keys():
-                leftPrimer=primerTags['PRIMER_LEFT_ADAPTER']+primers[2*i]
-            else:
-                leftPrimer=primers[2*i]
-            leftEnd3_rc=str(Seq.Seq(primers[2*i][-4:]).reverse_complement())
-            leftHairpin=primer3.calcHairpin(leftPrimer,
-                                            mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
-                                            dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
-                                            dna_conc=primerTags['PRIMER_DNA_CONC'],
-                                            dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
-            leftHomodimer=primer3.calcHomodimer(leftPrimer,
+            while(i<int(len(primers)/2) and len(primers)>0):
+                if 'PRIMER_LEFT_ADAPTER' in primerTags.keys():
+                    leftPrimer=primerTags['PRIMER_LEFT_ADAPTER']+primers[2*i]
+                else:
+                    leftPrimer=primers[2*i]
+                leftEnd3_rc=str(Seq.Seq(primers[2*i][-4:]).reverse_complement())
+                leftHairpin=primer3.calcHairpin(leftPrimer,
                                                 mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
                                                 dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
                                                 dna_conc=primerTags['PRIMER_DNA_CONC'],
                                                 dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
-            leftHairpinEnd3=calcThreeStrikeEndHairpin(leftPrimer,
-                                                      mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
-                                                      dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
-                                                      dntp_conc=primerTags['PRIMER_DNTP_CONC'],
-                                                      dna_conc=primerTags['PRIMER_DNA_CONC'])
-            leftHomodimerEnd3=calcThreeStrikeEndDimer(leftPrimer,leftPrimer,
-                                                      mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
-                                                      dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
-                                                      dna_conc=primerTags['PRIMER_DNA_CONC'],
-                                                      dntp_conc=primerTags['PRIMER_DNTP_CONC'])
-            while(i<int(len(primers)/2) and len(primers)>0):
+                leftHomodimer=primer3.calcHomodimer(leftPrimer,
+                                                    mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                    dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                    dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                    dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
+                leftHairpinEnd3=calcThreeStrikeEndHairpin(leftPrimer,
+                                                          mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                          dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                          dntp_conc=primerTags['PRIMER_DNTP_CONC'],
+                                                          dna_conc=primerTags['PRIMER_DNA_CONC'])
+                leftHomodimerEnd3=calcThreeStrikeEndDimer(leftPrimer,leftPrimer,
+                                                          mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                          dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                          dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                          dntp_conc=primerTags['PRIMER_DNTP_CONC'])
                 if (primers[2*i][-5:].count('G')+primers[2*i][-5:].count('C')<minEndGC
                     or leftHairpinEnd3<-2
                     or leftHomodimer<args.minMultDimerdG2
@@ -737,32 +776,32 @@ def runPrimer3(regionName,inputParams,extPrimer,args):
                 primersProductSizes.append(0)
                 primersProductPenalty.append(out['PRIMER_RIGHT_'+str(i)+'_PENALTY'])
             i=0
-            if 'PRIMER_RIGHT_ADAPTER' in primerTags.keys():
-                rightPrimer=primerTags['PRIMER_RIGHT_ADAPTER']+primers[2*i+1]
-            else:
-                rightPrimer=primers[2*i]
-            rightEnd3_rc=str(Seq.Seq(primers[2*i+1][-4:]).reverse_complement())
-            rightHairpin=primer3.calcHairpin(rightPrimer,
-                                             mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
-                                             dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
-                                             dna_conc=primerTags['PRIMER_DNA_CONC'],
-                                             dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
-            rightHomodimer=primer3.calcHomodimer(rightPrimer,
+            while(i<int(len(primers)/2) and len(primers)>0):
+                if 'PRIMER_RIGHT_ADAPTER' in primerTags.keys():
+                    rightPrimer=primerTags['PRIMER_RIGHT_ADAPTER']+primers[2*i+1]
+                else:
+                    rightPrimer=primers[2*i]
+                rightEnd3_rc=str(Seq.Seq(primers[2*i+1][-4:]).reverse_complement())
+                rightHairpin=primer3.calcHairpin(rightPrimer,
                                                  mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
                                                  dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
                                                  dna_conc=primerTags['PRIMER_DNA_CONC'],
                                                  dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
-            rightHairpinEnd3=calcThreeStrikeEndHairpin(rightPrimer,
-                                                      mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
-                                                      dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
-                                                      dntp_conc=primerTags['PRIMER_DNTP_CONC'],
-                                                      dna_conc=primerTags['PRIMER_DNA_CONC'])
-            rightHomodimerEnd3=calcThreeStrikeEndDimer(rightPrimer,rightPrimer,
-                                                       mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
-                                                       dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
-                                                       dna_conc=primerTags['PRIMER_DNA_CONC'],
-                                                       dntp_conc=primerTags['PRIMER_DNTP_CONC'])
-            while(i<int(len(primers)/2) and len(primers)>0):
+                rightHomodimer=primer3.calcHomodimer(rightPrimer,
+                                                     mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                     dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                     dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                     dntp_conc=primerTags['PRIMER_DNTP_CONC']).dg/1000
+                rightHairpinEnd3=calcThreeStrikeEndHairpin(rightPrimer,
+                                                          mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                          dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                          dntp_conc=primerTags['PRIMER_DNTP_CONC'],
+                                                          dna_conc=primerTags['PRIMER_DNA_CONC'])
+                rightHomodimerEnd3=calcThreeStrikeEndDimer(rightPrimer,rightPrimer,
+                                                           mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
+                                                           dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
+                                                           dna_conc=primerTags['PRIMER_DNA_CONC'],
+                                                           dntp_conc=primerTags['PRIMER_DNTP_CONC'])
                 if (primers[2*i+1][-5:].count('G')+primers[2*i+1][-5:].count('C')<minEndGC
                     or rightHairpinEnd3<-2
                     or rightHomodimer<args.minMultDimerdG2
@@ -808,8 +847,16 @@ def runPrimer3(regionName,inputParams,extPrimer,args):
                 seqTags['SEQUENCE_PRIMER_PAIR_OK_REGION_LIST'][0][0]=0
                 continue
             else:
+##                print(primerTags)
+##                print(seqTags)
+##                print(sorted(seqTags.items()))
+##                input()
                 return(regionName,None,None,None,None,None,inputParams,out)
         else:
+            # For cases when the length of regionSeq<2*maxAmplLen
+            # we need to give it to the output in order change primer coordinates
+##            if len(seqTags['SEQUENCE_TEMPLATE'])<2*primerTags['PRIMER_PRODUCT_SIZE_RANGE'][0][1]*2:
+##                
             return(regionName,primers,primersPoses,primersTms,primersProductSizes,primersProductPenalty,inputParams,out)
 
 def writeDraftPrimers(primersInfo,rFile,goodPrimers=None,external=False):
@@ -941,7 +988,7 @@ def getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom):
             uncoveredRegions.pop(chrom)
     return(uncoveredRegions,amplNames,primersToAmplNames)
 
-def getRegionsUncoveredByDraftExternalPrimers(primersInfo,primersInfoByChrom,outputInternalPrimers,args):
+def getRegionsUncoveredByDraftExternalPrimers(primersInfo,primersInfoByChrom,outputInternalPrimers,args,refFa):
     # primersInfo[primer1_primer2]=[[[leftStart,primerLength],[rightEnd,rightLength]],
                                   # [leftTm,rightTm],
                                   # amplLen,score,chromosome]
@@ -959,7 +1006,7 @@ def getRegionsUncoveredByDraftExternalPrimers(primersInfo,primersInfoByChrom,out
     uncoveredInternalPrimers=deepcopy(outputInternalPrimers)
     regionNameToChrom={}
     amplToStartCoord={}
-    refFa=pysam.FastaFile(args.wholeGenomeRef)
+##    refFa=pysam.FastaFile(args.wholeGenomeRef)
     for chromInt,coords in primersInfoByChrom.items():
         chrom=numToName[chromInt]
         for amplName,parameters in sorted(outputInternalPrimers.items(),
@@ -981,7 +1028,13 @@ def getRegionsUncoveredByDraftExternalPrimers(primersInfo,primersInfoByChrom,out
                         rightGC=round((rightPrimer.count('G')+rightPrimer.count('C'))*100/len(rightPrimer),2)
                     else:
                         rightGC=0
-                    seq=extractGenomeSeq(refFa,chrom,coord[0][0]-100,coord[1][0]+100)
+                    if coord[0][0]-100<1:
+                        seq=extractGenomeSeq(refFa,chrom,1,coord[1][0]+100)
+                    elif coord[1][0]+100>refFa.lengths[refFa.references.index(chromName)]:
+                        seq=extractGenomeSeq(refFa,chrom,coord[0][0]-100,refFa.lengths[refFa.references.index(chromName)])
+                    else:
+                        seq=extractGenomeSeq(refFa,chrom,coord[0][0]-100,coord[1][0]+100)
+##                    seq=extractGenomeSeq(refFa,chrom,coord[0][0]-100,coord[1][0]+100)
                     outputExternalPrimers[parameters[2]]=[[leftPrimer,rightPrimer,parameters[2]+'_ext',
                                                           chrom,coord[0][0],coord[1][0],coord[1][0]-coord[0][0]+1,
                                                           coord[0][0]+coord[1][0],coord[1][0]-coord[1][1],
@@ -1045,7 +1098,7 @@ def checkThisPrimerPairForCoveringOtherInputRegions(chromPointRegions,amplBlockS
     return(coveredRegions)
 
 def checkPrimersSpecificity(inputFileBase,primersInfo,
-                            wholeGenomeRef,runName,
+                            wholeGenomeRef,runName,refFa,
                             substNum=1,threads=2,gui=False,
                             maxNonSpecLen=100,
                             maxPrimerNonspec=1000,
@@ -1100,7 +1153,7 @@ def checkPrimersSpecificity(inputFileBase,primersInfo,
     logger.info(' Processing SAM-file...')
     totalNumberNonspecificRegions=0
     results=[]
-    refFa=pysam.FastaFile(wholeGenomeRef)
+##    refFa=pysam.FastaFile(wholeGenomeRef)
     for read in samFile.fetch():
         results.append(p.apply_async(readBwaFile,(read,maxPrimerNonspec,refFa,primersInfo)))
     wholeWork=len(results)
@@ -1229,17 +1282,27 @@ def readBwaFile(read,maxPrimerNonspec,refFa,primersInfo=None):
         primersName=read.qname#[:read.qname.rfind('_')]
         for primerPair in primersInfo.keys():
             if primersName in primerPair.split('_'):
+                primerNumInPair=primerPair.split('_').index(primersName)
+                strand=int((-1)**primerNumInPair)
+                pos=int(primersInfo[primerPair][0][primerNumInPair][0])
                 try:
-                    targetRegion=['chr'+primersInfo[primerPair][4],int(primersInfo[primerPair][0][primerPair.split('_').index(primersName)][0])]
+                    targetRegion=[primersInfo[primerPair][4],
+                                  strand*pos]
                 except TypeError:
-                    print('ERROR!',primersInfo[primerPair][4],primersInfo[primerPair][0],primerPair.split('_').index(primersName))
+                    print('ERROR!',primersInfo[primerPair][4],primersInfo[primerPair][0],primerNumInPair)
                     exit(15)
                 break
     else:
         targetRegion=[]
-    if [read.reference_name,strand*(read.pos+1)]!=targetRegion:
-        nonSpecRegions=[','.join([read.reference_name,str(strand*(read.pos+1)),
-                                  read.cigarstring,str(read.get_tag('NM'))])]
+    if strand==-1:
+        mainMapping=[read.reference_name,strand*(read.pos+len(read.qname))]
+    else:
+        mainMapping=[read.reference_name,strand*(read.pos+1)]
+    if mainMapping!=targetRegion:
+        nonSpecRegions=[','.join([read.reference_name,
+                                  str(strand*(read.pos+1)),
+                                  read.cigarstring,
+                                  str(read.get_tag('NM'))])]
     else:
         nonSpecRegions=[]
     if read.has_tag('XA'):
@@ -1266,20 +1329,29 @@ def readBwaFile(read,maxPrimerNonspec,refFa,primersInfo=None):
             for m in matchMatch:
                 sumMatch+=int(m)
             regionLen=sumMatch+sumDeletions
-        attempts=0
-        seq=None
-        while(seq is None):
-            try:
-                seq=refFa.fetch(region=chrom+':'+str(abs(int(pos)))+'-'+str(abs(int(pos))+regionLen-1))
-            except Exception as e:
-                seq=None
-                attempts+=1
-                if attempts>=10:                    
-                    print('ERROR!',e)
-                    logger.error(str(e))
-                    print(refFa.filename)
-                    logger.error(refFa.filename)
-                    exit(16)
+        if int(pos)<0:
+            pos2=-(-int(pos)+regionLen-1)
+        else:
+            pos2=int(pos)
+        if ([chrom,int(pos)]==targetRegion or
+            (chrom==targetRegion[0] and
+             abs(targetRegion[1]-pos2)<=len(read.seq))):
+            continue
+        seq=extractGenomeSeq(refFa,chrom,abs(int(pos)),abs(int(pos))+regionLen-1)
+##        attempts=0
+##        seq=None
+##        while(seq is None):
+##            try:
+##                seq=refFa.fetch(region=chrom+':'+str(abs(int(pos)))+'-'+str(abs(int(pos))+regionLen-1))
+##            except Exception as e:
+##                seq=None
+##                attempts+=1
+##                if attempts>=10:                    
+##                    print('ERROR!',e)
+##                    logger.error(str(e))
+##                    print(refFa.filename)
+##                    logger.error(refFa.filename)
+##                    exit(16)
         # Remove 
         # Determine, which sequence we should take: forward or reverse-complement
         ## If primer is on + strand and found region is on opposite
@@ -1291,27 +1363,36 @@ def readBwaFile(read,maxPrimerNonspec,refFa,primersInfo=None):
             regStrand=-1
         if (strand>0 and int(pos)<0) or (strand<0 and int(pos)>0):
             try:
-                seq=str(Seq.Seq(seq).reverse_complement())
+                seq=str(Seq.Seq(seq).reverse_complement()).upper()
             except ValueError:
                 print('ERROR! Unknown DNA symbols in the sequence extracted from the reference genome!')
                 print(seq)
                 print(chrom,pos,regionLen)
                 exit(49)
+        else:
+            seq=seq.upper()
         # If there is some insertions or deletion in found region
         if 'I' in cigar or 'D' in cigar:
             # We need to align its sequence with primer sequence
             align=pairwise2.align.globalxx(read.seq,seq)
             # Check that 3'-ends of primers are identical
             ## and one of two nucleotides before 3'-ends are identical, too
-            if align[0][0][-1]==align[0][1][-1] and (align[0][0][-2]==align[0][1][-2] or
-                                                     align[0][0][-3]==align[0][1][-3]):
+            if (align[0][0][-1]==align[0][1][-1] and
+                (align[0][0][-2]==align[0][1][-2] or
+                 align[0][0][-3]==align[0][1][-3])):
                 # Then we consider this region as a non-specific for this primer
-                primerNonSpecRegions.append([chrom,regStrand,abs(int(pos)),regionLen])
+                primerNonSpecRegions.append([chrom,
+                                             regStrand,
+                                             abs(int(pos)),
+                                             regionLen])
         else:
             if seq[-1]==read.seq[-1] and (seq[-2]==read.seq[-2] or
                                          seq[-3]==read.seq[-3]):
                 # Then we consider this region as a non-specific for this primer
-                primerNonSpecRegions.append([chrom,regStrand,abs(int(pos)),regionLen])
+                primerNonSpecRegions.append([chrom,
+                                             regStrand,
+                                             abs(int(pos)),
+                                             regionLen])
     return(read.qname,primerNonSpecRegions)
 
 def getPrimerPairsThatFormUnspecificProduct(primersNonSpecRegionsByChrs,maxNonSpecLen=100,
@@ -1373,10 +1454,13 @@ def removeBadPrimerPairs(primersInfoByChrom,primersInfo,goodPrimers,primersToAmp
     primersInfoByChrom=deepcopy(newPrimersInfoByChrom)
     return(primersInfoByChrom,primersInfo,amplNames)
 
-def checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regionsCoords,filterMessage='by specificity',skipUndesigned=False):
+def checkThatAllInputRegionsCovered(amplNames,allRegions,
+                                    regionNameToChrom,regionsCoords,
+                                    filterMessage='by specificity',skipUndesigned=False):
     someInputRegionUncovered=False
     newAmplNames={}
-    for curRegionName,ampls in amplNames.items():
+    for curRegionName,ampls in sorted(amplNames.items(),
+                                      key=lambda item:splitNameForSorting(item[0])):
         if len(ampls)==0:
             if skipUndesigned:
                 try:
@@ -1388,9 +1472,9 @@ def checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regio
                     print(curRegionName in allRegions[regionNameToChrom[curRegionName]].keys())
                     exit(18)
                 logger.warn('For input region '+curRegionName+' ('+' '.join(list(map(str,allRegions[regionNameToChrom[curRegionName]][curRegionName])))+') no primers left after filtering primers '+filterMessage+'! Try to increase -primernum1 parameter. Or if you have already tried, use less stringent parameters.')
-                regionsCoords[int(regionNameToChrom[curRegionName])].remove(allRegions[regionNameToChrom[curRegionName]][curRegionName][1])
-                if len(regionsCoords[int(regionNameToChrom[curRegionName])])==0:
-                    regionsCoords.pop(int(regionNameToChrom[curRegionName]))
+                regionsCoords[nameToNum[regionNameToChrom[curRegionName]]].remove(allRegions[regionNameToChrom[curRegionName]][curRegionName][1])
+                if len(regionsCoords[nameToNum[regionNameToChrom[curRegionName]]])==0:
+                    regionsCoords.pop(nameToNum[regionNameToChrom[curRegionName]])
                 allRegions[regionNameToChrom[curRegionName]].pop(curRegionName)
                 if len(allRegions[regionNameToChrom[curRegionName]])==0:
                     allRegions.pop(regionNameToChrom[curRegionName])
@@ -1458,27 +1542,30 @@ def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,
     # end3Len sets number of nucleotides from the 3'-end that we will check
     if end3Len!=None:
         if strand>0:
-            start=max(start,end-end3Len+1)
+            end3_start=max(start,end-end3Len+1)
+            end3=list(range(end3_start,end+1))
         else:
-            end=min(end,start+end3Len-1)
+            end3_end=min(end,start+end3Len-1)
+            end3=list(range(start,end3_end+1))
+    else:
+        end3=list(range(start,end+1))
     # Previously, we only filtered out primers that crossed SNP by 3'-end
     # Now, we filter primers that cross SNP by any of its sequence
     hfSnpFound=False
     snps=[]
+    snpsEnd3=[]
     try:
-        for snp in vcf.fetch(chrom.replace('chr',''),start-1,end):
+        for snp in vcf.fetch(chrom,start-1,end):
             if float(snp.info['CAF'][0])<1-freq:
                 snps.append(snp)
+                if snp.pos in end3:
+                    snpsEnd3.append(snp)
     except ValueError:
-        try:
-            for snp in vcf.fetch(chrom,start-1,end):
-                if float(snp.info['CAF'][0])<1-freq:
-                    snps.append(snp)
-        except:
-            print('ERROR (49)! You need to place *.tbi file for dbSNP VCF-file in the same folder:')
-            print(dbSnpVcfFile)
-            exit(49)
-    if len(snps)>0:
+        print('ERROR (49)! You need to place *.tbi file for dbSNP VCF-file in the same folder:')
+        print(dbSnpVcfFile)
+        print(chroms,start-1,end)
+        exit(49)
+    if len(snps)>1 or len(end3)>0:
         hfSnpFound=True
     return(primer,hfSnpFound)
 
@@ -2011,6 +2098,7 @@ def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,ar
 ## unspecificPrimers is a list of primer pairs that form unspecific products 
 def checkPrimersFit(primers,primersToCompare,
                     minmultdimerdg1=-6,minmultdimerdg2=-10,
+                    maxIntersectionOfPrimers=5,
                     unspecificPrimers=[],
                     mv_conc=50,dv_conc=3,
                     dntp_conc=0.8,dna_conc=250,
@@ -2026,7 +2114,7 @@ def checkPrimersFit(primers,primersToCompare,
     # Here we compare chromosome names
     if chrom==primers[2]:
         inter=set(range(primers[3],primers[4])).intersection(list(range(amplStart,amplEnd)))
-        if len(inter)>5:
+        if len(inter)>maxIntersectionOfPrimers:
             # If there is intersection of length more than 5 bp, these primers pair do not correspond each other
             return(False,'Amplicons overlap')
     # Secondary structure with 5'-overhang
@@ -2191,16 +2279,13 @@ def calcThreeStrikeEndHairpin(seq,
         return(dG)
     else:
         return(0)
-                
 
-def extractGenomeSeq(refFa,chrom,start,end):
+def extractGenomeSeq(refFa,chromName,start,end):
     attempts=0
     seq=None
-    if 'chr' not in str(chrom):
-        chrom='chr'+str(chrom)
     while(seq is None):
         try:
-            seq=refFa.fetch(region=chrom+':'+str(start)+'-'+str(end))
+            seq=refFa.fetch(region=chromName+':'+str(start)+'-'+str(end))
         except:
             seq=None
             attempts+=1
@@ -2209,8 +2294,12 @@ def extractGenomeSeq(refFa,chrom,start,end):
                 logger.error('Could not extract genome sequence!')
                 print(refFa.filename)
                 logger.error(refFa.filename)
-                print(chrom,start,end)
-                logger.error('chrom:'+str(start)+'-'+str(end))
+                print(chromName,start,end)
+                logger.error(chromName+':'+str(start)+'-'+str(end))
+                print('Chromosome name to number converter:',nameToNum)
+                logger.error('Chromosome name to number converter: '+str(nameToNum.items()))
+                print('Chromosome number to name converter:',numToName)
+                logger.error('Chromosome number to name converter: '+str(numToName.items()))
                 exit(28)
     return(seq.upper())
 
@@ -2235,6 +2324,18 @@ def showPercWork(done,allWork,gui=False):
 
 def revComplement(nuc):
     return(str(Seq.Seq(nuc).reverse_complement()))
+
+# Splits some name by _ and returns list with possible integer values
+# e.g. BRAF_ex1_1_5 will give ('BRAF','ex1',int(1),int(5))
+def splitNameForSorting(name):
+    values=name.split('_')
+    newValues=[]
+    for val in values:
+        try:
+            newValues.append(int(val))
+        except ValueError:
+            newValues.append(val)
+    return(newValues)
 
 # Section of input arguments
 par=argparse.ArgumentParser(description='This script constructs primers for multiplex NGS panels')
@@ -2422,6 +2523,10 @@ par.add_argument('--min-multiplex-dimer-dg2','-minmultdimerdg2',
                  help="minimal acceptable value of free energy of primer dimer formation "
                       "in one multiplex in kcal/mol. Default: -10",
                  required=False,default=-10)
+par.add_argument('--max-neighbor-intersection','-maxneighborinter',
+                 dest='maxPrimerIntersection',type=float,
+                 help="Maximal acceptable intersection of neighboring primers. Default: 5",
+                 required=False,default=5)
 par.add_argument('--threads','-th',
                  dest='threads',type=int,
                  help='number of threads. Default: 2',
@@ -2493,6 +2598,7 @@ if ((args.primersFile and
     print('WARNING!' +'/n'+'There is space in the directory of primers file. We recommend you to delete it to avoid errors')
 inputDir=args.regionsFile[:args.regionsFile.rfind('/')+1]
 wgref=args.wholeGenomeRef
+refFa=pysam.FastaFile(args.wholeGenomeRef)
 if not args.maxPrimerHairpinTh:
     args.maxPrimerHairpinTh=args.minPrimerMelt-10
 if (args.embeddedAmpl or args.primersFile) and args.maxExtAmplLen<=args.maxAmplLen+2*args.minPrimerShift:
@@ -2516,7 +2622,7 @@ if args.dbSnpVcfFile and not os.path.exists(args.dbSnpVcfFile):
 if args.dbSnpVcfFile and ' ' in args.dbSnpVcfFile:
     print('WARNING!' +'/n'+'There is space in the directory of SNP file. We recommend you to delete it to avoid errors')
 
-chrToChr(args)
+chrToChr(args,refFa)
 
 # We make primer3 parameters for each input position
 ## Later we will send them into multithreading pool
@@ -2615,7 +2721,8 @@ if args.primersFile:
                     try:
                         fit,problem=checkPrimersFit(internalPrimers[0:2]+[chrom,amplStart,amplEnd],
                                                     outputInternalPrimers[node],
-                                                    args.minMultDimerdG1,args.minMultDimerdG2,[],
+                                                    args.minMultDimerdG1,args.minMultDimerdG2,
+                                                    args.maxPrimerIntersection,[],
                                                     args.mvConc,args.dvConc,
                                                     args.dntpConc,args.primerConc,
                                                     args.leftAdapter,args.rightAdapter)
@@ -2637,8 +2744,8 @@ if args.primersFile:
     ### So the first step is to create primer3 input files
     print('Creating primer3 parameters for external primers design...')
     logger.info('Creating primer3 parameters for external primers design...')
-    primer3Params,regionNameToChrom,amplToStartCoord=createPrimer3_parameters(allRegions,args,
-                                                                        designedInternalPrimers=outputInternalPrimers)
+    primer3Params,regionNameToChrom,amplToStartCoord=createPrimer3_parameters(allRegions,args,refFa,
+                                                                              designedInternalPrimers=outputInternalPrimers)
     p=ThreadPool(args.threads)
     externalPrimersNum=0
     regionsWithoutPrimers=[]
@@ -2683,22 +2790,29 @@ if args.primersFile:
             rightGC=round(100*(primerSeqs[2*k+1].count('G')+primerSeqs[2*k+1].count('C'))/len(primerSeqs[2*k+1]),2)
             chromName=chrom
             chromInt=nameToNum[chrom]
-            try:
-                out=pysam.faidx(wgref,chromName+':'+str(start-1-100)+'-'+str(end+100))
-            except pysam.utils.SamtoolsError:
-                print('ERROR #49: File with reference genome is corrupted:')
-                logger.error('#49 File with reference genome is corrupted:')
-                print(wgref)
-                logger.error(wgref)
-                exit(49)
-            lines=out.split('\n')
-            if lines[1]=='':
-                print('ERROR #37: Extracted sequence has no length')
-                logger.error('#37 Extracted sequence has no length')
-                print(chromName,start-1-100,end+100)
-                logger.error(', '.join(map(str,[chromName,start-1-100,end+100])))
-                exit(37)
-            extendedAmplSeq=''.join(lines[1:-1]).upper()
+            if start-1-100<1:
+                extendedAmplSeq=extractGenomeSeq(refFa,chromName,1,end+100)
+            elif end+100>refFa.lengths[refFa.references.index(chromName)]:
+                extendedAmplSeq=extractGenomeSeq(refFa,chromName,start-1-100,refFa.lengths[refFa.references.index(chromName)])
+            else:
+                extendedAmplSeq=extractGenomeSeq(refFa,chromName,start-1-100,end+100)
+##            extendedAmplSeq=extractGenomeSeq(refFa,chromName,start-1-100,end+100)
+##            try:
+##                out=pysam.faidx(wgref,chromName+':'+str(start-1-100)+'-'+str(end+100))
+##            except pysam.utils.SamtoolsError:
+##                print('ERROR #49: File with reference genome is corrupted:')
+##                logger.error('#49 File with reference genome is corrupted:')
+##                print(wgref)
+##                logger.error(wgref)
+##                exit(49)
+##            lines=out.split('\n')
+##            if lines[1]=='':
+##                print('ERROR #37: Extracted sequence has no length')
+##                logger.error('#37 Extracted sequence has no length')
+##                print(chromName,start-1-100,end+100)
+##                logger.error(', '.join(map(str,[chromName,start-1-100,end+100])))
+##                exit(37)
+##            extendedAmplSeq=''.join(lines[1:-1]).upper()
             if curRegionName not in outputExternalPrimers.keys():
                 outputExternalPrimers[curRegionName]=[[primerSeqs[2*k+0],primerSeqs[2*k+1],curRegionName+'_ext',chrom,start,end,
                                                        end-start+1,start+primersCoords[2*k][1],end-primersCoords[2*k+1][1],
@@ -2732,7 +2846,7 @@ if args.primersFile:
         print('\nAnalyzing external primers for their specificity...')
         logger.info('Analyzing external primers for their specificity...')
         specificPrimers,primersNonSpecRegionsByChrs=checkPrimersSpecificity(args.regionsFile[:-4],extPrimersInfo,args.wholeGenomeRef,
-                                                                            args.runName,args.substNum,args.threads,args.gui,
+                                                                            args.runName,refFa,args.substNum,args.threads,args.gui,
                                                                             args.maxNonSpecLen,args.maxPrimerNonspec,True,str(i+1))
         print(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
         logger.info(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
@@ -2819,7 +2933,7 @@ if args.primersFile:
                 fit,problem=checkPrimersFit(extPrimers[0:2]+extPrimers[3:6],
                                             outputExternalPrimers[node],
                                             args.minMultDimerdG1,args.minMultDimerdG2,
-                                            unspecificPrimers,
+                                            args.maxPrimerIntersection,unspecificPrimers,
                                             args.mvConc,args.dvConc,
                                             args.dntpConc,args.primerConc)
                 if not fit:
@@ -2910,30 +3024,30 @@ else:
         primersInfo,primersInfoByChrom=readDraftPrimers(args.draftFile)
         print('Number of primer pairs from draft file: '+str(len(primersInfo)))
         logger.info('Number of primer pairs from draft file: '+str(len(primersInfo)))
-        if not args.skipUndesigned:
-            # Get regions that uncovered by already designed primers
-            print('Getting positions that uncovered by draft primers...')
-            logger.info('Getting positions that uncovered by draft primers...')
-            uncoveredRegions,amplNames,primersToAmplNames=getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom)
-            if len(uncoveredRegions)>0:
-                # Go through all regions sorted by chromosome and coordinate of start
-                print('Creating input parameters for primer3...')
-                logger.info('Creating input parameters for primer3...')
-                primer3Params=createPrimer3_parameters(uncoveredRegions,args,
-                                                       regionNameToPrimerType=regionNameToPrimerType)
-                # Construct primers for each created set of parameters
-                print('Constructing primers...')
-                logger.info('Constructing primers...')
-                # primer3Params,regionNameToChrom,args,regionsCoords=None,allRegions=None,primersInfo=None,primersInfoByChrom=None,amplNames=None,primersToAmplNames=None
-                primersInfo,primersInfoByChrom,amplNames,primersToAmplNames,regionsCoords,regionNameToChrom,uncoveredRegions=constructInternalPrimers(primer3Params,regionNameToChrom,args,regionsCoords,allRegions,
-                                                                                                                                                      primersInfo,primersInfoByChrom,amplNames,primersToAmplNames)
-                print('Total number of primer pairs: '+str(len(primersInfo)))
-                logger.info('Total number of primer pairs: '+str(len(primersInfo)))
+##        if not args.skipUndesigned:
+        # Get regions that uncovered by already designed primers
+        print('Getting positions that uncovered by draft primers...')
+        logger.info('Getting positions that uncovered by draft primers...')
+        uncoveredRegions,amplNames,primersToAmplNames=getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom)
+        if len(uncoveredRegions)>0:
+            # Go through all regions sorted by chromosome and coordinate of start
+            print('Creating input parameters for primer3...')
+            logger.info('Creating input parameters for primer3...')
+            primer3Params=createPrimer3_parameters(uncoveredRegions,args,refFa,
+                                                   regionNameToPrimerType=regionNameToPrimerType)
+            # Construct primers for each created set of parameters
+            print('Constructing primers...')
+            logger.info('Constructing primers...')
+            # primer3Params,regionNameToChrom,args,regionsCoords=None,allRegions=None,primersInfo=None,primersInfoByChrom=None,amplNames=None,primersToAmplNames=None
+            primersInfo,primersInfoByChrom,amplNames,primersToAmplNames,regionsCoords,regionNameToChrom,uncoveredRegions=constructInternalPrimers(primer3Params,regionNameToChrom,args,regionsCoords,allRegions,
+                                                                                                                                                  primersInfo,primersInfoByChrom,amplNames,primersToAmplNames)
+            print('Total number of primer pairs: '+str(len(primersInfo)))
+            logger.info('Total number of primer pairs: '+str(len(primersInfo)))
     else:                            
         # Go through all regions sorted by chromosome and coordinate of start
         print('Creating input parameters for primer3...')
         logger.info('Creating input parameters for primer3...')
-        primer3Params=createPrimer3_parameters(allRegions,args,regionNameToPrimerType=regionNameToPrimerType)
+        primer3Params=createPrimer3_parameters(allRegions,args,refFa,regionNameToPrimerType=regionNameToPrimerType)
 
         # Construct primers for each created set of parameters
         print('Constructing primers...')
@@ -2945,7 +3059,7 @@ else:
         print('Analyzing primers for their specificity...')
         logger.info('Analyzing primers for their specificity...')
         specificPrimers,primersNonSpecRegionsByChrs=checkPrimersSpecificity(args.regionsFile[:-4],primersInfo,args.wholeGenomeRef,
-                                                                            args.runName,args.substNum,args.threads,args.gui,
+                                                                            args.runName,refFa,args.substNum,args.threads,args.gui,
                                                                             args.maxNonSpecLen,args.maxPrimerNonspec,False,'')    
         print(' # Number of specific primer pairs:',len(specificPrimers))
         logger.info(' # Number of specific primer pairs: '+str(len(specificPrimers)))
@@ -3114,13 +3228,19 @@ else:
                 amplLen=amplEnd-amplStart+1
                 leftPrimerTm,rightPrimerTm=primersInfo['_'.join(c)][1]
                 chromName=str(numToName[int(chromIntStr)])
-                out=pysam.faidx(wgref,chromName+':'+str(amplStart-1-100)+'-'+str(amplEnd+100))
-                lines=out.split('\n')
-                if lines[1]=='':
-                    print('ERROR! Extracted sequence has no length')
-                    print(chromName,amplStart-1-100,amplEnd+100)
-                    exit(40)
-                extendedAmplSeq=''.join(lines[1:-1]).upper()
+                if amplStart-1-100<1:
+                    extendedAmplSeq=extractGenomeSeq(refFa,chromName,1,amplEnd+100)
+                elif amplEnd+100>refFa.lengths[refFa.references.index(chromName)]:
+                    extendedAmplSeq=extractGenomeSeq(refFa,chromName,amplStart-1-100,refFa.lengths[refFa.references.index(chromName)])
+                else:
+                    extendedAmplSeq=extractGenomeSeq(refFa,chromName,amplStart-1-100,amplEnd+100)
+##                out=pysam.faidx(wgref,chromName+':'+str(amplStart-1-100)+'-'+str(amplEnd+100))
+##                lines=out.split('\n')
+##                if lines[1]=='':
+##                    print('ERROR! Extracted sequence has no length')
+##                    print(chromName,amplStart-1-100,amplEnd+100)
+##                    exit(40)
+##                extendedAmplSeq=''.join(lines[1:-1]).upper()
                 rInternalFile.write('\n'.join(['>'+primersToAmplNames['_'.join(c)][0],extendedAmplSeq])+'\n')
                 amplName=primersToAmplNames['_'.join(c)][0]
                 regionName=amplName[:amplName.rfind('_')]
@@ -3153,7 +3273,7 @@ else:
                                 fit,problem=checkPrimersFit(c+[chromName,amplStart,amplEnd],
                                                             outputInternalPrimers[node],
                                                             args.minMultDimerdG1,args.minMultDimerdG2,
-                                                            unspecificPrimers,
+                                                            args.maxPrimerIntersection,unspecificPrimers,
                                                             args.mvConc,args.dvConc,
                                                             args.dntpConc,args.primerConc,
                                                             args.leftAdapter,args.rightAdapter)
@@ -3202,7 +3322,7 @@ else:
                 logger.info('Getting positions that uncovered by draft external primers...')
                 # primersInfo,primersInfoByChrom,outputInternalPrimers,args
                 output=getRegionsUncoveredByDraftExternalPrimers(extPrimersInfo,extPrimersInfoByChrom,
-                                                                 outputInternalPrimers,args)
+                                                                 outputInternalPrimers,args,refFa)
                 outputExternalPrimers,uncoveredInternalPrimers,regionNameToChrom,amplToStartCoord=output
                 print('Number of internal amplicons that do not have external primers: '+str(len(uncoveredInternalPrimers)))
                 logger.info('Number of internal amplicons that do not have external primers: '+str(len(uncoveredInternalPrimers)))
@@ -3210,13 +3330,13 @@ else:
                     # Go through all regions sorted by chromosome and coordinate of start
                     print('Creating input parameters for primer3...')
                     logger.info('Creating input parameters for primer3...')
-                    primer3Params,regionNameToChrom,amplToStartCoord=createPrimer3_parameters(uncoveredRegions,args,
+                    primer3Params,regionNameToChrom,amplToStartCoord=createPrimer3_parameters(uncoveredRegions,args,refFa,
                                                                                         designedInternalPrimers=uncoveredInternalPrimers,
                                                                                         regionNameToPrimerType=regionNameToPrimerType)
             else:
                 print('\nCreating primer3 parameters for external primers design, combination variant '+str(i+1)+'...')
                 logger.info('Creating primer3 parameters for external primers design, combination variant '+str(i+1)+'...')
-                primer3Params,regionNameToChrom,amplToStartCoord=createPrimer3_parameters(allRegions,args,
+                primer3Params,regionNameToChrom,amplToStartCoord=createPrimer3_parameters(allRegions,args,refFa,
                                                                                     designedInternalPrimers=outputInternalPrimers,
                                                                                     regionNameToPrimerType=regionNameToPrimerType,
                                                                                     regionNameToChrom=regionNameToChrom)
@@ -3284,21 +3404,27 @@ else:
                         rightGC=0
                         end=amplToStartCoord[curRegionName]+args.maxExtAmplLen-1
                     chromName=chrom
-                    try:
-                        out=pysam.faidx(wgref,chromName+':'+str(start-1-100)+'-'+str(end+100))
-                    except pysam.utils.SamtoolsError:
-                        print('ERROR! File with reference genome is probably corrupted:')
-                        print(wgref)
-                        print(start,end)
-                        print(amplToStartCoord)
-                        print(curRegionName)
-                        exit(52)
-                    lines=out.split('\n')
-                    if lines[1]=='':
-                        print('ERROR! Extracted sequence has no length')
-                        print(chromName,start-1-100,end+100)
-                        exit(43)
-                    extendedAmplSeq=''.join(lines[1:-1]).upper()
+                    if start-1-100<1:
+                        extendedAmplSeq=extractGenomeSeq(refFa,chromName,1,end+100)
+                    elif end+100>refFa.lengths[refFa.references.index(chromName)]:
+                        extendedAmplSeq=extractGenomeSeq(refFa,chromName,start-1-100,refFa.lengths[refFa.references.index(chromName)])
+                    else:
+                        extendedAmplSeq=extractGenomeSeq(refFa,chromName,start-1-100,end+100)
+##                    try:
+##                        out=pysam.faidx(wgref,chromName+':'+str(start-1-100)+'-'+str(end+100))
+##                    except pysam.utils.SamtoolsError:
+##                        print('ERROR! File with reference genome is probably corrupted:')
+##                        print(wgref)
+##                        print(start,end)
+##                        print(amplToStartCoord)
+##                        print(curRegionName)
+##                        exit(52)
+##                    lines=out.split('\n')
+##                    if lines[1]=='':
+##                        print('ERROR! Extracted sequence has no length')
+##                        print(chromName,start-1-100,end+100)
+##                        exit(43)
+##                    extendedAmplSeq=''.join(lines[1:-1]).upper()
                     if curRegionName not in outputExternalPrimers.keys():
                         outputExternalPrimers[curRegionName]=[[primerSeqs[2*k+0],primerSeqs[2*k+1],curRegionName+'_ext',chrom,start,end,
                                                                end-start+1,start+primersCoords[2*k][1],end-primersCoords[2*k+1][1],
@@ -3339,7 +3465,7 @@ else:
                 print('\nAnalyzing external primers for their specificity...')
                 logger.info('Analyzing external primers for their specificity...')
                 specificPrimers,primersNonSpecRegionsByChrs=checkPrimersSpecificity(args.regionsFile[:-4],extPrimersInfo,args.wholeGenomeRef,
-                                                                                    args.runName,args.substNum,args.threads,args.gui,
+                                                                                    args.runName,refFa,args.substNum,args.threads,args.gui,
                                                                                     args.maxNonSpecLen,args.maxPrimerNonspec,True,str(i+1))
                 print(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
                 logger.info(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
@@ -3431,7 +3557,7 @@ else:
                         fit,problem=checkPrimersFit(extPrimers[0:2]+extPrimers[3:6],
                                                     outputExternalPrimers[node],
                                                     args.minMultDimerdG1,args.minMultDimerdG2,
-                                                    unspecificPrimers,
+                                                    args.maxPrimerIntersection,unspecificPrimers,
                                                     args.mvConc,args.dvConc,
                                                     args.dntpConc,args.primerConc)
                         if not fit:
