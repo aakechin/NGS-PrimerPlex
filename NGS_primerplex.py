@@ -278,7 +278,8 @@ def createPrimer3_parameters(pointRegions,args,refFa,
                                                      args.maxExtAmplLen,args.minPrimerShift,
                                                      args.minPrimerLen])))
                 exit(54)
-            regionSeq=extractGenomeSeq(refFa,chromName,chrTargetSeqStart,
+            regionSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                       chromName,chrTargetSeqStart,
                                        amplBlockEnd+(args.maxExtAmplLen-args.minPrimerShift-args.minPrimerLen)+1)
             targetRegion=str(amplBlockStart-args.minPrimerShift-chrTargetSeqStart)+','+str(amplBlockEnd-amplBlockStart+1+2*args.minPrimerShift)
             targetRegionStart=amplBlockStart-args.minPrimerShift-chrTargetSeqStart
@@ -348,7 +349,8 @@ def createPrimer3_parameters(pointRegions,args,refFa,
                     print(chromName,start,args.maxAmplLen,end)
                     logger.error(', '.join([chromName,str(start),str(args.maxAmplLen),str(end)]))
                 elif start-args.maxAmplLen<0:
-                    regionSeq=extractGenomeSeq(refFa,chromName,1,end+args.maxAmplLen)
+                    regionSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                               chromName,1,end+args.maxAmplLen)
                     seqTags['SEQUENCE_TEMPLATE']=str(regionSeq)
                     prevEnd=end
                     primerPairOkRegion=[[0,start-1,
@@ -356,7 +358,8 @@ def createPrimer3_parameters(pointRegions,args,refFa,
                     seqTags['SEQUENCE_PRIMER_PAIR_OK_REGION_LIST']=primerPairOkRegion
                     primer3Params[curRegionName].append([deepcopy(seqTags),deepcopy(primerTags)])
                 elif end+args.maxAmplLen>refFa.lengths[refFa.references.index(chromName)]:
-                    regionSeq=extractGenomeSeq(refFa,chromName,max(1,start-args.maxAmplLen),
+                    regionSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                               chromName,max(1,start-args.maxAmplLen),
                                                refFa.lengths[refFa.references.index(chromName)])
                     seqTags['SEQUENCE_TEMPLATE']=str(regionSeq)
                     prevEnd=end
@@ -366,7 +369,8 @@ def createPrimer3_parameters(pointRegions,args,refFa,
                     seqTags['SEQUENCE_PRIMER_PAIR_OK_REGION_LIST']=primerPairOkRegion
                     primer3Params[curRegionName].append([deepcopy(seqTags),deepcopy(primerTags)])
                 else:
-                    regionSeq=extractGenomeSeq(refFa,chromName,max(1,start-args.maxAmplLen),end+args.maxAmplLen)
+                    regionSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                               chromName,max(1,start-args.maxAmplLen),end+args.maxAmplLen)
                     seqTags['SEQUENCE_TEMPLATE']=str(regionSeq)
                     if start==prevEnd+1:                    
                         primerPairOkRegion=[[args.maxAmplLen-args.maxPrimerLen-2,args.maxPrimerLen+2,
@@ -1029,11 +1033,14 @@ def getRegionsUncoveredByDraftExternalPrimers(primersInfo,primersInfoByChrom,out
                     else:
                         rightGC=0
                     if coord[0][0]-100<1:
-                        seq=extractGenomeSeq(refFa,chrom,1,coord[1][0]+100)
+                        seq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                             chrom,1,coord[1][0]+100)
                     elif coord[1][0]+100>refFa.lengths[refFa.references.index(chromName)]:
-                        seq=extractGenomeSeq(refFa,chrom,coord[0][0]-100,refFa.lengths[refFa.references.index(chromName)])
+                        seq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                             chrom,coord[0][0]-100,refFa.lengths[refFa.references.index(chromName)])
                     else:
-                        seq=extractGenomeSeq(refFa,chrom,coord[0][0]-100,coord[1][0]+100)
+                        seq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                             chrom,coord[0][0]-100,coord[1][0]+100)
 ##                    seq=extractGenomeSeq(refFa,chrom,coord[0][0]-100,coord[1][0]+100)
                     outputExternalPrimers[parameters[2]]=[[leftPrimer,rightPrimer,parameters[2]+'_ext',
                                                           chrom,coord[0][0],coord[1][0],coord[1][0]-coord[0][0]+1,
@@ -1155,7 +1162,8 @@ def checkPrimersSpecificity(inputFileBase,primersInfo,
     results=[]
 ##    refFa=pysam.FastaFile(wholeGenomeRef)
     for read in samFile.fetch():
-        results.append(p.apply_async(readBwaFile,(read,maxPrimerNonspec,refFa,primersInfo)))
+        results.append(p.apply_async(readBwaFile,(read,maxPrimerNonspec,refFa,
+                                                  wholeGenomeRef,primersInfo)))
     wholeWork=len(results)
     doneWork=0
     unspecificPrimers={}
@@ -1266,7 +1274,8 @@ def checkPrimersSpecificity(inputFileBase,primersInfo,
     # each element of specificPrimers has a format: primerSeq1_primerSeq2
     return(specificPrimers,primersNonSpecRegionsByChrs)
 
-def readBwaFile(read,maxPrimerNonspec,refFa,primersInfo=None):
+def readBwaFile(read,maxPrimerNonspec,refFa,
+                wholeGenomeRef,primersInfo=None):
     indelsPat=re.compile('(\d+)([ID])')
     matchPat=re.compile('(\d+)M')
     # Extract strand of the main match in genome
@@ -1337,7 +1346,8 @@ def readBwaFile(read,maxPrimerNonspec,refFa,primersInfo=None):
             (chrom==targetRegion[0] and
              abs(targetRegion[1]-pos2)<=len(read.seq))):
             continue
-        seq=extractGenomeSeq(refFa,chrom,abs(int(pos)),abs(int(pos))+regionLen-1)
+        seq=extractGenomeSeq(refFa,wholeGenomeRef,
+                             chrom,abs(int(pos)),abs(int(pos))+regionLen-1)
 ##        attempts=0
 ##        seq=None
 ##        while(seq is None):
@@ -1561,11 +1571,25 @@ def checkPrimerForCrossingSNP(primer,chrom,start,end,strand,
                 if snp.pos in end3:
                     snpsEnd3.append(snp)
     except ValueError:
-        print('ERROR (49)! You need to place *.tbi file for dbSNP VCF-file in the same folder:')
-        print(dbSnpVcfFile)
-        print(chroms,start-1,end)
-        exit(49)
-    if len(snps)>1 or len(end3)>0:
+        try:
+            for snp in vcf.fetch(chrom.replace('chr',''),start-1,end):
+                if float(snp.info['CAF'][0])<1-freq:
+                    snps.append(snp)
+                    if snp.pos in end3:
+                        snpsEnd3.append(snp)
+        except:
+            print("ERROR (49)! Unknown error with getting SNPs from the following file. Possibly you haven't made tbi-file with tabix:")
+            logger.error("(49)! Unknown error with getting SNPs from the following file. Possibly you haven't made tbi-file with tabix:")
+            print('File:',dbSnpVcfFile)
+            logger.error('File: '+dbSnpVcfFile)
+            print('Chromosome:',chrom)
+            logger.error('Chromosome: '+chrom)
+            print('Start:',start-1)
+            logger.error('Start: '+str(start-1))
+            print('End:',end)
+            logger.error('End: '+str(end))
+            exit(49)
+    if len(snps)>1 or len(snpsEnd3)>0:
         hfSnpFound=True
     return(primer,hfSnpFound)
 
@@ -2280,7 +2304,8 @@ def calcThreeStrikeEndHairpin(seq,
     else:
         return(0)
 
-def extractGenomeSeq(refFa,chromName,start,end):
+def extractGenomeSeq(refFa,wholeGenomeRef,
+                     chromName,start,end):
     attempts=0
     seq=None
     while(seq is None):
@@ -2289,6 +2314,9 @@ def extractGenomeSeq(refFa,chromName,start,end):
         except:
             seq=None
             attempts+=1
+            # If there are some problems with getting regions seq,
+            # re-open whole genome reference file
+            refFa=pysam.FastaFile(wholeGenomeRef)
             if attempts>=10:                    
                 print('ERROR: could not extract genome sequence!',)
                 logger.error('Could not extract genome sequence!')
@@ -2791,11 +2819,14 @@ if args.primersFile:
             chromName=chrom
             chromInt=nameToNum[chrom]
             if start-1-100<1:
-                extendedAmplSeq=extractGenomeSeq(refFa,chromName,1,end+100)
+                extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                                 chromName,1,end+100)
             elif end+100>refFa.lengths[refFa.references.index(chromName)]:
-                extendedAmplSeq=extractGenomeSeq(refFa,chromName,start-1-100,refFa.lengths[refFa.references.index(chromName)])
+                extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                                 chromName,start-1-100,refFa.lengths[refFa.references.index(chromName)])
             else:
-                extendedAmplSeq=extractGenomeSeq(refFa,chromName,start-1-100,end+100)
+                extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                                 chromName,start-1-100,end+100)
 ##            extendedAmplSeq=extractGenomeSeq(refFa,chromName,start-1-100,end+100)
 ##            try:
 ##                out=pysam.faidx(wgref,chromName+':'+str(start-1-100)+'-'+str(end+100))
@@ -3229,11 +3260,14 @@ else:
                 leftPrimerTm,rightPrimerTm=primersInfo['_'.join(c)][1]
                 chromName=str(numToName[int(chromIntStr)])
                 if amplStart-1-100<1:
-                    extendedAmplSeq=extractGenomeSeq(refFa,chromName,1,amplEnd+100)
+                    extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                                     chromName,1,amplEnd+100)
                 elif amplEnd+100>refFa.lengths[refFa.references.index(chromName)]:
-                    extendedAmplSeq=extractGenomeSeq(refFa,chromName,amplStart-1-100,refFa.lengths[refFa.references.index(chromName)])
+                    extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                                     chromName,amplStart-1-100,refFa.lengths[refFa.references.index(chromName)])
                 else:
-                    extendedAmplSeq=extractGenomeSeq(refFa,chromName,amplStart-1-100,amplEnd+100)
+                    extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                                     chromName,amplStart-1-100,amplEnd+100)
 ##                out=pysam.faidx(wgref,chromName+':'+str(amplStart-1-100)+'-'+str(amplEnd+100))
 ##                lines=out.split('\n')
 ##                if lines[1]=='':
@@ -3405,11 +3439,14 @@ else:
                         end=amplToStartCoord[curRegionName]+args.maxExtAmplLen-1
                     chromName=chrom
                     if start-1-100<1:
-                        extendedAmplSeq=extractGenomeSeq(refFa,chromName,1,end+100)
+                        extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                                         chromName,1,end+100)
                     elif end+100>refFa.lengths[refFa.references.index(chromName)]:
-                        extendedAmplSeq=extractGenomeSeq(refFa,chromName,start-1-100,refFa.lengths[refFa.references.index(chromName)])
+                        extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                                         chromName,start-1-100,refFa.lengths[refFa.references.index(chromName)])
                     else:
-                        extendedAmplSeq=extractGenomeSeq(refFa,chromName,start-1-100,end+100)
+                        extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                                         chromName,start-1-100,end+100)
 ##                    try:
 ##                        out=pysam.faidx(wgref,chromName+':'+str(start-1-100)+'-'+str(end+100))
 ##                    except pysam.utils.SamtoolsError:
