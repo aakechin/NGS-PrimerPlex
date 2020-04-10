@@ -437,6 +437,16 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
     doneWork=0
     wholeWork=len(results)
     primerDesignExplains={}
+    internalExplainToWords=['left min end GC',
+                            'right min end GC',
+                            'left hairpin end3',
+                            'right hairpin end3',
+                            'left homodimer',
+                            'right homodimer',
+                            'heterodimer',
+                            'left homodimer end3',
+                            'right homodimer end3',
+                            'heterodimer end3']
     for res in results:
         doneWork+=1
         showPercWork(doneWork,wholeWork,args.gui)
@@ -447,10 +457,22 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
             explanation=''
             if 'PRIMER_PAIR_EXPLAIN' in designOutput.keys():
                 explanation=designOutput['PRIMER_PAIR_EXPLAIN']
+                if explanation=='considered 0, ok 0':
+                    explanation='considered 0 pairs, ok 0;'
+                    if 'PRIMER_LEFT_EXPLAIN' in designOutput.keys():
+                        if 'ok 0' in designOutput['PRIMER_LEFT_EXPLAIN']:
+                            explanation+='\n  Left: '+designOutput['PRIMER_LEFT_EXPLAIN']
+                    if 'PRIMER_RIGHT_EXPLAIN' in designOutput.keys():
+                        if 'ok 0' in designOutput['PRIMER_RIGHT_EXPLAIN']:
+                            explanation+='\n  Right: '+designOutput['PRIMER_RIGHT_EXPLAIN']
             elif 'PRIMER_RIGHT_EXPLAIN' in designOutput.keys():
                 explanation=designOutput['PRIMER_RIGHT_EXPLAIN']
             elif 'PRIMER_LEFT_EXPLAIN' in designOutput.keys():
                 explanation=designOutput['PRIMER_LEFT_EXPLAIN']
+            if 'INTERNAL_EXPLAIN' in designOutput.keys():
+                for k,filteredNum in enumerate(designOutput['INTERNAL_EXPLAIN']):
+                    if filteredNum>0:
+                        explanation+=' \n'+str(filteredNum)+' pairs were filtered by '+internalExplainToWords[k]
             if curRegionName not in primerDesignExplains:
                 primerDesignExplains[curRegionName]=[]
             primerDesignExplains[curRegionName].append(explanation)
@@ -474,22 +496,25 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
             if '_'.join(primerSeqs[2*i:2*i+2]) in primersInfo.keys():
                 continue
             # Calculating coordinates of primers on a chromosome
-            try:
-                if start-args.maxAmplLen<0:
-                    primersCoords[2*i][0]=primersCoords[2*i][0]
+            # If it is near the start of a chromosome
+            if start-args.maxAmplLen<0:
+                primersCoords[2*i][0]=primersCoords[2*i][0]
+                ## If we constructed only left primer
+                if primersCoords[2*i+1][0]==0:
+                    # We set coordinate of the right primer as the most right position of this amplicon
+                    primersCoords[2*i+1][0]=args.maxAmplLen
                 else:
-                    primersCoords[2*i][0]=primersCoords[2*i][0]+start-args.maxAmplLen # We do not substract 1, because we want to get real coordinate, not number of symbol in coordinate
-            except TypeError:
-                print('ERROR:',primersCoords)
-                exit(11)
-            # We substract args.maxAmplLen because it is an addiotional part of chromosome that we wrote to primer3 input file as target sequence
-            # primersCoords[2*i+1][0] is a right coordinate of primer
-            ## If we constructed only left primer
-            if primersCoords[2*i+1][0]==0:
-                # We set coordinate of the right primer as the most right position of this amplicon
-                primersCoords[2*i+1][0]=start+args.maxAmplLen
+                    primersCoords[2*i+1][0]=primersCoords[2*i+1][0]
             else:
-                primersCoords[2*i+1][0]=primersCoords[2*i+1][0]+start-args.maxAmplLen
+                primersCoords[2*i][0]=primersCoords[2*i][0]+start-args.maxAmplLen # We do not substract 1, because we want to get real coordinate, not number of symbol in coordinate
+                # We substract args.maxAmplLen because it is an addiotional part of chromosome that we wrote to primer3 input file as target sequence
+                # primersCoords[2*i+1][0] is a right coordinate of primer
+                ## If we constructed only left primer
+                if primersCoords[2*i+1][0]==0:
+                    # We set coordinate of the right primer as the most right position of this amplicon
+                    primersCoords[2*i+1][0]=start+args.maxAmplLen
+                else:
+                    primersCoords[2*i+1][0]=primersCoords[2*i+1][0]+start-args.maxAmplLen
             # Calculate coordinates of amplified block that exclude primers
             amplBlockStart=primersCoords[2*i][0]+primersCoords[2*i][1]
             amplBlockEnd=primersCoords[2*i+1][0]-primersCoords[2*i+1][1]
@@ -544,12 +569,10 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
             print(primer3Params[regionWithoutPrimer][0][0]['SEQUENCE_TEMPLATE'])
             logger.info(primer3Params[regionWithoutPrimer][0][0]['SEQUENCE_TEMPLATE'])
             if regionWithoutPrimer not in primerDesignExplains.keys():
-##                print(' # WARNING! For the following region there is no explanations:')
-##                logger.warn(' # WARNING! For the following region there is no explanations:')
-##                print(primerDesignExplains.keys())
-##                logger.warn(str(primerDesignExplains.keys()))
-##                print(regionWithoutPrimer)
-##                logger.warn(regionWithoutPrimer)
+                print('All primer pairs were filtered out by non-primer3 parameters. '
+                      "Try changing NGS-PrimerPlex parameters (e.g. homodimer stability with hybridized 3'-end)")
+                logger.info('All primer pairs were filtered out by non-primer3 parameters. '
+                            "Try changing NGS-PrimerPlex parameters (e.g. homodimer stability with hybridized 3'-end)")
                 continue
             for explanation in primerDesignExplains[regionWithoutPrimer]:
                 print(explanation)
@@ -672,30 +695,22 @@ def runPrimer3(regionName,inputParams,extPrimer,args):
                                                         dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
                                                         dna_conc=primerTags['PRIMER_DNA_CONC'],
                                                         dntp_conc=primerTags['PRIMER_DNTP_CONC'])
-                if (primers[2*i][-5:].count('G')+primers[2*i][-5:].count('C')<minEndGC
-                    or primers[2*i+1][-5:].count('G')+primers[2*i+1][-5:].count('C')<minEndGC
-                    or leftHairpinEnd3<-2
-                    or rightHairpinEnd3<-2
-                    or leftHomodimer<args.minMultDimerdG2
-                    or rightHomodimer<args.minMultDimerdG2
-                    or heterodimer<args.minMultDimerdG2
-                    or leftHomodimerEnd3<args.minMultDimerdG1
-                    or rightHomodimerEnd3<args.minMultDimerdG1
-                    or heterodimerEnd3<args.minMultDimerdG1):
-##                    print(primers[2*i][-5:].count('G')+primers[2*i][-5:].count('C'),
-##                          primers[2*i+1][-5:].count('G')+primers[2*i+1][-5:].count('C'),
-##                          leftHairpinEnd3,
-##                          rightHairpinEnd3,
-##                          leftHomodimer,
-##                          rightHomodimer,
-##                          heterodimer,
-##                          leftHomodimerEnd3,
-##                          rightHomodimerEnd3,
-##                          heterodimerEnd3,
-##                          primers[2*i],
-##                          primers[2*i+1],
-##                          leftPrimer,
-##                          rightPrimer)
+                internalChecks=[primers[2*i][-5:].count('G')+primers[2*i][-5:].count('C')<minEndGC,
+                                primers[2*i+1][-5:].count('G')+primers[2*i+1][-5:].count('C')<minEndGC,
+                                leftHairpinEnd3<-2,
+                                rightHairpinEnd3<-2,
+                                leftHomodimer<args.minMultDimerdG2,
+                                rightHomodimer<args.minMultDimerdG2,
+                                heterodimer<args.minMultDimerdG2,
+                                leftHomodimerEnd3<args.minMultDimerdG1,
+                                rightHomodimerEnd3<args.minMultDimerdG1,
+                                heterodimerEnd3<args.minMultDimerdG1]
+                if True in internalChecks:
+                    out['INTERNAL_EXPLAIN']=[0]*10
+                    for k,check in enumerate(internalChecks):
+                        if check:
+                            out['INTERNAL_EXPLAIN'][k]+=1
+                            break
                     primers.pop(2*i); primers.pop(2*i)
                     primersPoses.pop(2*i); primersPoses.pop(2*i)
                     primersTms.pop(2*i); primersTms.pop(2*i)
@@ -854,13 +869,10 @@ def runPrimer3(regionName,inputParams,extPrimer,args):
 ##                print(primerTags)
 ##                print(seqTags)
 ##                print(sorted(seqTags.items()))
+##                print(out)
 ##                input()
                 return(regionName,None,None,None,None,None,inputParams,out)
         else:
-            # For cases when the length of regionSeq<2*maxAmplLen
-            # we need to give it to the output in order change primer coordinates
-##            if len(seqTags['SEQUENCE_TEMPLATE'])<2*primerTags['PRIMER_PRODUCT_SIZE_RANGE'][0][1]*2:
-##                
             return(regionName,primers,primersPoses,primersTms,primersProductSizes,primersProductPenalty,inputParams,out)
 
 def writeDraftPrimers(primersInfo,rFile,goodPrimers=None,external=False):
@@ -1235,7 +1247,7 @@ def checkPrimersSpecificity(inputFileBase,primersInfo,
             totalNonspecRegionsForPrimer1=0
             totalNonspecRegionsForPrimer2=0
             regions1=primersNonSpecRegions[primerName1]
-            regions2=primersNonSpecRegions[primerName1]
+            regions2=primersNonSpecRegions[primerName2]
             if regions1!=None and regions2==None:
                 for chrRegions in regions1.values():
                     totalNonspecRegionsForPrimer1+=len(chrRegions)
@@ -1656,7 +1668,7 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,
             lastMut=True
             lastMutNum1=lastNode
         if lastMut and firstMut:
-            blockGraph.add_edge('end',primerPairName1)                                     
+            blockGraph.add_edge('end',primerPairName1)
             continue
         # Get index of the last mutation that is covered by this primers pair
         ## Extract the last position of amplBlock, insert it to list and get index
@@ -1736,37 +1748,11 @@ def joinAmpliconsToBlocks(chromRegionsCoords,chromPrimersInfoByChrom,
                     break
                 if analysisNum>maxAnalysisVars:
                     break
-##            while(True):
-##                analysisNum+=1
-##                edgelist=blockGraph.edges()
-##                try:
-##                    random.shuffle(edgelist)
-##                except TypeError:
-##                    print('ERROR (55)! Incorrect type of edgelist:')
-##                    print(type(edgelist))
-##                    exit(55)
-##                g=nx.Graph(edgelist)
-##                if weightOff:
-##                    path=tuple(nx.algorithms.shortest_paths.generic.shortest_path(blockGraph,firstNodes[i],lastNodes[i]))
-##                else:
-##                    path=tuple(nx.algorithms.shortest_paths.generic.shortest_path(blockGraph,firstNodes[i],lastNodes[i],'weight'))
-##                g1=blockGraph.subgraph(path)
-##                if len(path)<minPathLen:
-##                    shortestPaths={path:g1.size(weight='weight')}
-##                    minPathLen=len(path)
-##                    continue
-##                elif len(path)>minPathLen:
-##                    continue
-##                if path in shortestPaths.keys():
-##                    weightOff=True
-##                shortestPaths[path]=g1.size(weight='weight')
-##                if len(shortestPaths.keys())>=args.returnVariantsNum*2:
-##                    break
-##                if analysisNum>maxAnalysisVars:
-##                    break
             finalShortestPaths=[]
             j=0
             for path,value in sorted(shortestPaths.items(),key=itemgetter(1)):
+                if 'end' in path[1:-1]:
+                    continue
                 finalShortestPaths.append(path[1:-1])
                 j+=1
                 if j>=args.returnVariantsNum:
@@ -1965,7 +1951,17 @@ def getBestPrimerCombinations(allRegionsAmplifiedBlocks,
             if chromIntStr not in outCombinations[-1].keys():
                 outCombinations[-1][chromIntStr]={}
             for primerPair in blockPrimers:
-                outCombinations[-1][chromIntStr][primersInfo[primerPair][0][0][0]]=primerPair.split('_')
+                try:
+                    outCombinations[-1][chromIntStr][primersInfo[primerPair][0][0][0]]=primerPair.split('_')
+                except KeyError:
+                    print('ERROR (59)! Unknown error with primerPair:')
+                    logger.error('(59)! Unknown error with primerPair:')
+                    print('PrimerPair: '+str(primerPair))
+                    logger.error('PrimerPair: '+str(primerPair))
+                    print(blockPrimers)
+                    logger.error(str(blockPrimers))
+                    print(allRegionsAmplifiedBlocks)
+                    exit(59)
                 primerPairNum+=1
         print(' # Number of primer pairs and score for the multiplex variant',i+1,'-',primerPairNum,'('+str(combinations[combination])+')')
         logger.info(' # Number of primer pairs and score for the multiplex variant '+str(i+1)+': '+str(primerPairNum)+' ('+str(combinations[combination])+')')
@@ -2604,7 +2600,7 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.info('The command was:\n'+' '.join(sys.argv))
 logger.info('Arguments used:\n')
-for arg in vars(args):
+for arg in sorted(vars(args)):
     logger.info(str(arg)+' '+str(getattr(args,arg)))
 # Section of input arguments control
 try:
@@ -2827,23 +2823,6 @@ if args.primersFile:
             else:
                 extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
                                                  chromName,start-1-100,end+100)
-##            extendedAmplSeq=extractGenomeSeq(refFa,chromName,start-1-100,end+100)
-##            try:
-##                out=pysam.faidx(wgref,chromName+':'+str(start-1-100)+'-'+str(end+100))
-##            except pysam.utils.SamtoolsError:
-##                print('ERROR #49: File with reference genome is corrupted:')
-##                logger.error('#49 File with reference genome is corrupted:')
-##                print(wgref)
-##                logger.error(wgref)
-##                exit(49)
-##            lines=out.split('\n')
-##            if lines[1]=='':
-##                print('ERROR #37: Extracted sequence has no length')
-##                logger.error('#37 Extracted sequence has no length')
-##                print(chromName,start-1-100,end+100)
-##                logger.error(', '.join(map(str,[chromName,start-1-100,end+100])))
-##                exit(37)
-##            extendedAmplSeq=''.join(lines[1:-1]).upper()
             if curRegionName not in outputExternalPrimers.keys():
                 outputExternalPrimers[curRegionName]=[[primerSeqs[2*k+0],primerSeqs[2*k+1],curRegionName+'_ext',chrom,start,end,
                                                        end-start+1,start+primersCoords[2*k][1],end-primersCoords[2*k+1][1],
@@ -2872,6 +2851,9 @@ if args.primersFile:
     logger.info(' # Number of designed external primers: '+str(externalPrimersNum))
     p.close()
     p.join()
+    writeDraftPrimers(extPrimersInfo,
+                      args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers.xls',
+                      external=True)
     # Analyzing external primers specificity        
     if args.doBlast:
         print('\nAnalyzing external primers for their specificity...')
@@ -2881,6 +2863,11 @@ if args.primersFile:
                                                                             args.maxNonSpecLen,args.maxPrimerNonspec,True,str(i+1))
         print(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
         logger.info(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
+        # Write primers that left after filtering by specificity
+        writeDraftPrimers(extPrimersInfo,
+                          args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_specificity.xls',
+                          goodPrimers=specificPrimers,
+                          external=True)
     # Check external primers for covering high-frequent SNPs
     if args.snps:
         print('Analyzing external primers for covering high-frequent SNPs...')
@@ -2892,6 +2879,11 @@ if args.primersFile:
                                                                                     args.gui)
         print("\n # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
         logger.info(" # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
+        # Write primers that left after filtering by SNPs
+        writeDraftPrimers(extPrimersInfo,
+                          args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_SNPs.xls',
+                          goodPrimers=primerPairsNonCoveringSNPs,
+                          external=True)
     # Now we need to remove unspecific primer pairs
     unspecificExternalPairs=0
     for curRegionName,primers in outputExternalPrimers.items():
@@ -3344,6 +3336,7 @@ else:
             ## And construct primers that will surround internal amplicons
             ### So the first step is to create primer3 input files
             # If user use as input draft primers
+            primer3Params={}
             if args.draftFile:
                 print('Reading file with draft primers...')
                 logger.info('Reading file with draft primers...')
@@ -3375,10 +3368,9 @@ else:
                                                                                     regionNameToPrimerType=regionNameToPrimerType,
                                                                                     regionNameToChrom=regionNameToChrom)
                 outputExternalPrimers={}
-                extPrimersInfo={} # This variable only for blasting designed external primers
+                extPrimersInfo={} # This variable only for blasting designed external primers and for draft-files
 
 ##            createExternalPrimers(primer3Params,regionNameToChrom,amplToStartCoord,wgref,args,wbw,colsWidth2)
-            p=ThreadPool(args.threads)
             externalPrimersNum=0
             regionsWithoutPrimers=[]
             primersForOutput={}
@@ -3387,113 +3379,100 @@ else:
                                'Amplified_Block_Start','Amplified_Block_End','Left_Primer_Tm','Right_Primer_Tm','Left_Primer_Length','Right_Primer_Length','Left_GC','Right_GC',"Left_3'-shift","Right_3'-shift",'Multiplex','Specificity'])
             for k,colsWidth in enumerate(colsWidth2):
                 wsw2.set_column(k,k,colsWidth)
-            print('Constructing external primers...')
-            logger.info('Constructing external primers...')
-            results=[]
-            for regionName,inputParams in primer3Params.items():
-                for inputParam in inputParams:
-                    results.append(p.apply_async(runPrimer3,(regionName,inputParam,True,args)))
-            doneWork=0
-            wholeWork=len(results)
-            primerDesignExplains={}
-            for res in results:
-                doneWork+=1
-                showPercWork(doneWork,wholeWork,args.gui)
-                curRegionName,primerSeqs,primersCoords,primerTms,amplLens,amplScores,primer3File,designOutput=res.get()
-                if primerSeqs==None:
-                    regionsWithoutPrimers.append(curRegionName)
-                    explanation=''
-                    if 'PRIMER_PAIR_EXPLAIN' in designOutput.keys():
-                        explanation=designOutput['PRIMER_PAIR_EXPLAIN']
-                    elif 'PRIMER_RIGHT_EXPLAIN' in designOutput.keys():
-                        explanation=designOutput['PRIMER_RIGHT_EXPLAIN']
-                    elif 'PRIMER_LEFT_EXPLAIN' in designOutput.keys():
-                        explanation=designOutput['PRIMER_LEFT_EXPLAIN']
-                    if curRegionName not in primerDesignExplains:
-                        primerDesignExplains[curRegionName]=[explanation]
-                    else:
-                        primerDesignExplains[curRegionName].append(explanation)
-                    continue
-                # leftPrimer,rightPrimer,amplName,chrom,amplStart,amplEnd,amplLen,amplBlockStart,amplBlockEnd,leftPrimerTm,rightPrimerTm,leftPrimerLen,rightPrimerLen,leftGC,rightGC
-                # Save all found variants of external primers. Later we will choose the best ones
-                for k in range(int(len(primerSeqs)/2)):
-                    # We do not need to create multiplexes. We only want to surround alredy designed amplicons
-                    ## with external primers, selecting only the best ones
-                    try:
-                        chrom=regionNameToChrom[curRegionName]
-                    except:
-                        print('ERROR!',regionNameToChrom)
-                        print(curRegionName)
-                        exit(42)
-                    if primerSeqs[2*k+0]!='':
-                        leftGC=round(100*(primerSeqs[2*k+0].count('G')+primerSeqs[2*k+0].count('C'))/len(primerSeqs[2*k+0]),2)
-                        start=amplToStartCoord[curRegionName]+primersCoords[2*k+0][0]
-                    else:
-                        leftGC=0
-                        start=amplToStartCoord[curRegionName]
-                    if primerSeqs[2*k+1]!='':
-                        rightGC=round(100*(primerSeqs[2*k+1].count('G')+primerSeqs[2*k+1].count('C'))/len(primerSeqs[2*k+1]),2)
-                        end=amplToStartCoord[curRegionName]+primersCoords[2*k+1][0]
-                    else:
-                        rightGC=0
-                        end=amplToStartCoord[curRegionName]+args.maxExtAmplLen-1
-                    chromName=chrom
-                    if start-1-100<1:
-                        extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
-                                                         chromName,1,end+100)
-                    elif end+100>refFa.lengths[refFa.references.index(chromName)]:
-                        extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
-                                                         chromName,start-1-100,refFa.lengths[refFa.references.index(chromName)])
-                    else:
-                        extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
-                                                         chromName,start-1-100,end+100)
-##                    try:
-##                        out=pysam.faidx(wgref,chromName+':'+str(start-1-100)+'-'+str(end+100))
-##                    except pysam.utils.SamtoolsError:
-##                        print('ERROR! File with reference genome is probably corrupted:')
-##                        print(wgref)
-##                        print(start,end)
-##                        print(amplToStartCoord)
-##                        print(curRegionName)
-##                        exit(52)
-##                    lines=out.split('\n')
-##                    if lines[1]=='':
-##                        print('ERROR! Extracted sequence has no length')
-##                        print(chromName,start-1-100,end+100)
-##                        exit(43)
-##                    extendedAmplSeq=''.join(lines[1:-1]).upper()
-                    if curRegionName not in outputExternalPrimers.keys():
-                        outputExternalPrimers[curRegionName]=[[primerSeqs[2*k+0],primerSeqs[2*k+1],curRegionName+'_ext',chrom,start,end,
-                                                               end-start+1,start+primersCoords[2*k][1],end-primersCoords[2*k+1][1],
-                                                               primerTms[2*k+0],primerTms[2*k+1],len(primerSeqs[2*k+0]),len(primerSeqs[2*k+1]),
-                                                               leftGC,rightGC,outputInternalPrimers[curRegionName][7]-(start+primersCoords[0][1])+1,
-                                                               end-primersCoords[1][1]-outputInternalPrimers[curRegionName][8]+1,extendedAmplSeq]]
-                    else:
-                        outputExternalPrimers[curRegionName].append([primerSeqs[0],primerSeqs[1],curRegionName+'_ext',chrom,start,end,
-                                                                     end-start+1,start+primersCoords[0][1],end-primersCoords[1][1],
-                                                                     primerTms[0],primerTms[1],len(primerSeqs[0]),len(primerSeqs[1]),
-                                                                     leftGC,rightGC,outputInternalPrimers[curRegionName][7]-(start+primersCoords[0][1])+1,
-                                                                     end-primersCoords[1][1]-outputInternalPrimers[curRegionName][8]+1,extendedAmplSeq])
-                    extPrimersInfo['_'.join(primerSeqs[2*k:2*k+2])]=[[[start,primersCoords[2*k][1]],[end,primersCoords[2*k+1][1]]],primerTms,end-start+1,0,chrom]
-                    externalPrimersNum+=1
-            # Statistics of the external primers design
-            if len(regionsWithoutPrimers)>0:
-                regionsWithoutPrimersCounter=Counter(regionsWithoutPrimers)
-                if 3 in regionsWithoutPrimersCounter.values():
-                    print(' # WARNING! For',list(regionsWithoutPrimersCounter.values()).count(3),'amplicon(s) external primers were not designed! Try less stringent parameters.')
-                    logger.warn(' # WARNING! For '+str(list(regionsWithoutPrimersCounter.values()).count(3))+' amplicon(s) external primers were not designed! Try less stringent parameters.')
-                    for regionWithoutPrimer,value in sorted(regionsWithoutPrimersCounter.items(),key=itemgetter(1),reverse=True):
-                        if value<3:
-                            break
-                        print('   '+regionWithoutPrimer)
-                        logger.info('   '+regionWithoutPrimer)
-                        for explanation in primerDesignExplains[regionWithoutPrimer]:
-                            print(explanation)
-                            logger.info(explanation)
-            print('\n # Number of designed external primers: '+str(externalPrimersNum))
-            logger.info(' # Number of designed external primers: '+str(externalPrimersNum))
-            p.close()
-            p.join()
+            if len(primer3Params)>0:
+                p=ThreadPool(args.threads)                
+                print('Constructing external primers...')
+                logger.info('Constructing external primers...')
+                results=[]
+                for regionName,inputParams in primer3Params.items():
+                    for inputParam in inputParams:
+                        results.append(p.apply_async(runPrimer3,(regionName,inputParam,True,args)))
+                doneWork=0
+                wholeWork=len(results)
+                primerDesignExplains={}
+                for res in results:
+                    doneWork+=1
+                    showPercWork(doneWork,wholeWork,args.gui)
+                    curRegionName,primerSeqs,primersCoords,primerTms,amplLens,amplScores,primer3File,designOutput=res.get()
+                    if primerSeqs==None:
+                        regionsWithoutPrimers.append(curRegionName)
+                        explanation=''
+                        if 'PRIMER_PAIR_EXPLAIN' in designOutput.keys():
+                            explanation=designOutput['PRIMER_PAIR_EXPLAIN']
+                        elif 'PRIMER_RIGHT_EXPLAIN' in designOutput.keys():
+                            explanation=designOutput['PRIMER_RIGHT_EXPLAIN']
+                        elif 'PRIMER_LEFT_EXPLAIN' in designOutput.keys():
+                            explanation=designOutput['PRIMER_LEFT_EXPLAIN']
+                        if curRegionName not in primerDesignExplains:
+                            primerDesignExplains[curRegionName]=[explanation]
+                        else:
+                            primerDesignExplains[curRegionName].append(explanation)
+                        continue
+                    # leftPrimer,rightPrimer,amplName,chrom,amplStart,amplEnd,amplLen,amplBlockStart,amplBlockEnd,leftPrimerTm,rightPrimerTm,leftPrimerLen,rightPrimerLen,leftGC,rightGC
+                    # Save all found variants of external primers. Later we will choose the best ones
+                    for k in range(int(len(primerSeqs)/2)):
+                        # We do not need to create multiplexes. We only want to surround alredy designed amplicons
+                        ## with external primers, selecting only the best ones
+                        try:
+                            chrom=regionNameToChrom[curRegionName]
+                        except:
+                            print('ERROR!',regionNameToChrom)
+                            print(curRegionName)
+                            exit(42)
+                        if primerSeqs[2*k+0]!='':
+                            leftGC=round(100*(primerSeqs[2*k+0].count('G')+primerSeqs[2*k+0].count('C'))/len(primerSeqs[2*k+0]),2)
+                            start=amplToStartCoord[curRegionName]+primersCoords[2*k+0][0]
+                        else:
+                            leftGC=0
+                            start=amplToStartCoord[curRegionName]
+                        if primerSeqs[2*k+1]!='':
+                            rightGC=round(100*(primerSeqs[2*k+1].count('G')+primerSeqs[2*k+1].count('C'))/len(primerSeqs[2*k+1]),2)
+                            end=amplToStartCoord[curRegionName]+primersCoords[2*k+1][0]
+                        else:
+                            rightGC=0
+                            end=amplToStartCoord[curRegionName]+args.maxExtAmplLen-1
+                        chromName=chrom
+                        if start-1-100<1:
+                            extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                                             chromName,1,end+100)
+                        elif end+100>refFa.lengths[refFa.references.index(chromName)]:
+                            extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                                             chromName,start-1-100,refFa.lengths[refFa.references.index(chromName)])
+                        else:
+                            extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
+                                                             chromName,start-1-100,end+100)
+                        if curRegionName not in outputExternalPrimers.keys():
+                            outputExternalPrimers[curRegionName]=[[primerSeqs[2*k+0],primerSeqs[2*k+1],curRegionName+'_ext',chrom,start,end,
+                                                                   end-start+1,start+primersCoords[2*k][1],end-primersCoords[2*k+1][1],
+                                                                   primerTms[2*k+0],primerTms[2*k+1],len(primerSeqs[2*k+0]),len(primerSeqs[2*k+1]),
+                                                                   leftGC,rightGC,outputInternalPrimers[curRegionName][7]-(start+primersCoords[0][1])+1,
+                                                                   end-primersCoords[1][1]-outputInternalPrimers[curRegionName][8]+1,extendedAmplSeq]]
+                        else:
+                            outputExternalPrimers[curRegionName].append([primerSeqs[0],primerSeqs[1],curRegionName+'_ext',chrom,start,end,
+                                                                         end-start+1,start+primersCoords[0][1],end-primersCoords[1][1],
+                                                                         primerTms[0],primerTms[1],len(primerSeqs[0]),len(primerSeqs[1]),
+                                                                         leftGC,rightGC,outputInternalPrimers[curRegionName][7]-(start+primersCoords[0][1])+1,
+                                                                         end-primersCoords[1][1]-outputInternalPrimers[curRegionName][8]+1,extendedAmplSeq])
+                        extPrimersInfo['_'.join(primerSeqs[2*k:2*k+2])]=[[[start,primersCoords[2*k][1]],[end,primersCoords[2*k+1][1]]],primerTms,end-start+1,0,chrom]
+                        externalPrimersNum+=1
+                # Statistics of the external primers design
+                if len(regionsWithoutPrimers)>0:
+                    regionsWithoutPrimersCounter=Counter(regionsWithoutPrimers)
+                    if 3 in regionsWithoutPrimersCounter.values():
+                        print(' # WARNING! For',list(regionsWithoutPrimersCounter.values()).count(3),'amplicon(s) external primers were not designed! Try less stringent parameters.')
+                        logger.warn(' # WARNING! For '+str(list(regionsWithoutPrimersCounter.values()).count(3))+' amplicon(s) external primers were not designed! Try less stringent parameters.')
+                        for regionWithoutPrimer,value in sorted(regionsWithoutPrimersCounter.items(),key=itemgetter(1),reverse=True):
+                            if value<3:
+                                break
+                            print('   '+regionWithoutPrimer)
+                            logger.info('   '+regionWithoutPrimer)
+                            for explanation in primerDesignExplains[regionWithoutPrimer]:
+                                print(explanation)
+                                logger.info(explanation)
+                print('\n # Number of designed external primers: '+str(externalPrimersNum))
+                logger.info(' # Number of designed external primers: '+str(externalPrimersNum))
+                p.close()
+                p.join()
             writeDraftPrimers(extPrimersInfo,
                               args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers.xls',
                               external=True)
@@ -3522,6 +3501,11 @@ else:
                                                                                             args.gui)
                 print("\n # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
                 logger.info(" # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
+                # Write primers that left after filtering by SNPs
+                writeDraftPrimers(extPrimersInfo,
+                                  args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_SNPs.xls',
+                                  goodPrimers=primerPairsNonCoveringSNPs,
+                                  external=True)
             # Now we need to remove unspecific primer pairs
             unspecificExternalPairs=0
             for curRegionName,primers in outputExternalPrimers.items():
