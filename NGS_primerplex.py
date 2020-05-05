@@ -1147,15 +1147,13 @@ def checkPrimersSpecificity(inputFileBase,primersInfo,
     else:
         bwaResultFileName=inputFileBase+'_NGS_primerplex'+runName+'_all_primers_sequences.bwa'
     unspecificPrimers={}
-    for runNum in range(2):
+    for runNum in range(1):
         if runNum==1:
             print('\n Running BWA again to search all regions...')
             logger.info(' Running BWA again to search all regions...')
         else:
             print(' Running BWA...')
             logger.info(' Running BWA...')
-##    print(' Running BWA...')
-##    logger.info(' Running BWA...')
             if not os.path.exists(wholeGenomeRef+'.sa'):
                 print('WARNING! BWA index is absent for the defined reference genome' '\n' +'Indexing whole genome reference with BWA')
                 out=sp.check_output('bwa index '+wholeGenomeRef,shell=True,stderr=sp.STDOUT).decode('utf-8')
