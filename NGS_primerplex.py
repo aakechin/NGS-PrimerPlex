@@ -1146,67 +1146,84 @@ def checkPrimersSpecificity(inputFileBase,primersInfo,
         bwaResultFileName=inputFileBase+'_NGS_primerplex'+runName+'_all_external_primers'+varNum+'_sequences.bwa'
     else:
         bwaResultFileName=inputFileBase+'_NGS_primerplex'+runName+'_all_primers_sequences.bwa'
-    print(' Running BWA...')
-    logger.info(' Running BWA...')
-    if not os.path.exists(wholeGenomeRef+'.sa'):
-        print('WARNING! BWA index is absent for the defined reference genome' '\n' +'Indexing whole genome reference with BWA')
-        out=sp.check_output('bwa index '+wholeGenomeRef,shell=True,stderr=sp.STDOUT).decode('utf-8')
-    if not os.path.exists(wholeGenomeRef+'.fai'):
-        print('WARNING! Samtools index is absent for the defined reference genome' '\n' +'Indexing whole genome reference with samtools')
-        out=sp.check_output('samtools faidx '+wholeGenomeRef,shell=True,stderr=sp.STDOUT).decode('utf-8')
-    cmd=['bwa','aln','-N','-n',str(args.substNum),
-         '-t',str(threads),wholeGenomeRef,seqFile.name]
-    with open(bwaResultFileName+'.sai','wb') as file:
-        output=sp.call(cmd,stdout=file,stderr=sp.DEVNULL)
-    cmd=['bwa','samse','-n','10000000',wholeGenomeRef,
-         bwaResultFileName+'.sai',seqFile.name]
-    with open(bwaResultFileName+'.sam','wt') as file:
-        output=sp.call(cmd,stdout=file,stderr=sp.DEVNULL)
-##    out=sp.check_output('bwa aln -N -n '+str(args.substNum)+' -t '+str(threads)+' '+wholeGenomeRef+' '+seqFile.name+' > '+bwaResultFileName+'.sai',shell=True,stderr=sp.STDOUT).decode('utf-8')
-##    out=sp.check_output('bwa samse -n 10000000 '+wholeGenomeRef+' '+bwaResultFileName+'.sai'+' '+seqFile.name+' > '+bwaResultFileName+'.sam',shell=True,stderr=sp.STDOUT).decode('utf-8')        
-    # Reading BWA output file
-    samFile=pysam.AlignmentFile(bwaResultFileName+'.sam')
-    # Process SAM-file strings in several threads
-    p=ThreadPool(threads)
-    print(' Processing SAM-file...')
-    logger.info(' Processing SAM-file...')
-    totalNumberNonspecificRegions=0
-    results=[]
-##    refFa=pysam.FastaFile(wholeGenomeRef)
-    for read in samFile.fetch():
-        results.append(p.apply_async(readBwaFile,(read,maxPrimerNonspec,refFa,
-                                                  wholeGenomeRef,primersInfo)))
-    wholeWork=len(results)
-    doneWork=0
     unspecificPrimers={}
-    for res in results:
-        # res[0] is a primer name
-        res=res.get()
-        doneWork+=1
-        showPercWork(doneWork,wholeWork,gui)
-        if res[1]==None or len(res[1])==0:
-            primersNonSpecRegions[res[0]]=None
+    for runNum in range(2):
+        if runNum==1:
+            print('\n Running BWA again to search all regions...')
+            logger.info(' Running BWA again to search all regions...')
         else:
-            primersNonSpecRegions[res[0]]={}
-            totalNumberNonspecificRegions+=len(res[1])
-            if len(res[1])>maxPrimerNonspec:
-                unspecificPrimers[res[0]]=len(res[1])
-                continue
-            # res[1] has format: chrom, pos, length
-            for region in res[1]:
-                if region[0] not in primersNonSpecRegions[res[0]].keys():
-                    primersNonSpecRegions[res[0]][region[0]]=[region[1:]]
+            print(' Running BWA...')
+            logger.info(' Running BWA...')
+##    print(' Running BWA...')
+##    logger.info(' Running BWA...')
+            if not os.path.exists(wholeGenomeRef+'.sa'):
+                print('WARNING! BWA index is absent for the defined reference genome' '\n' +'Indexing whole genome reference with BWA')
+                out=sp.check_output('bwa index '+wholeGenomeRef,shell=True,stderr=sp.STDOUT).decode('utf-8')
+            if not os.path.exists(wholeGenomeRef+'.fai'):
+                print('WARNING! Samtools index is absent for the defined reference genome' '\n' +'Indexing whole genome reference with samtools')
+                out=sp.check_output('samtools faidx '+wholeGenomeRef,shell=True,stderr=sp.STDOUT).decode('utf-8')
+        cmd=['bwa','aln','-N','-n',str(args.substNum),
+             '-t',str(threads),wholeGenomeRef,seqFile.name]
+        with open(bwaResultFileName+'.sai','wb') as file:
+            output=sp.call(cmd,stdout=file,stderr=sp.DEVNULL)
+        cmd=['bwa','samse','-n','10000000',wholeGenomeRef,
+             bwaResultFileName+'.sai',seqFile.name]
+        with open(bwaResultFileName+'.sam','wt') as file:
+            output=sp.call(cmd,stdout=file,stderr=sp.DEVNULL)
+        # Reading BWA output file
+        samFile=pysam.AlignmentFile(bwaResultFileName+'.sam')
+        # Process SAM-file strings in several threads
+        p=ThreadPool(threads)
+        print(' Processing SAM-file...')
+        logger.info(' Processing SAM-file...')
+        results=[]
+        for read in samFile.fetch():
+            results.append(p.apply_async(readBwaFile,(read,maxPrimerNonspec,refFa,
+                                                      wholeGenomeRef,primersInfo)))
+        wholeWork=len(results)
+        doneWork=0
+        for res in results:
+            # res[0] is a primer name
+            res=res.get()
+            doneWork+=1
+            showPercWork(doneWork,wholeWork,gui)
+            if res[1]==None or len(res[1])==0:
+                primersNonSpecRegions[res[0]]=None
+            else:
+                if primersNonSpecRegions[res[0]]==None:
+                    primersNonSpecRegions[res[0]]={}
+##                totalNumberNonspecificRegions+=len(res[1])
+                if res[0] not in unspecificPrimers.keys():
+                    if len(res[1])>maxPrimerNonspec:
+                        unspecificPrimers[res[0]]=len(res[1])
+                        continue
                 else:
-                    primersNonSpecRegions[res[0]][region[0]].append(region[1:])
-                if region[0] not in primersNonSpecRegionsByChrs.keys():
-                    primersNonSpecRegionsByChrs[region[0]]={res[0]:[region[1:]]}
-                elif res[0] not in primersNonSpecRegionsByChrs[region[0]].keys():
-                    primersNonSpecRegionsByChrs[region[0]][res[0]]=[region[1:]]
-                else:
-                    primersNonSpecRegionsByChrs[region[0]][res[0]].append(region[1:])
+                    continue
+                # res[1] has format: chrom, pos, length
+                for region in res[1]:
+                    if region[0] not in primersNonSpecRegions[res[0]].keys():
+                        primersNonSpecRegions[res[0]][region[0]]=set([tuple(region[1:])])
+                    else:
+                        primersNonSpecRegions[res[0]][region[0]].add(tuple(region[1:]))
+                    if region[0] not in primersNonSpecRegionsByChrs.keys():
+                        primersNonSpecRegionsByChrs[region[0]]={res[0]:set([tuple(region[1:])])}
+                    elif res[0] not in primersNonSpecRegionsByChrs[region[0]].keys():
+                        primersNonSpecRegionsByChrs[region[0]][res[0]]=set([tuple(region[1:])])
+                    else:
+                        primersNonSpecRegionsByChrs[region[0]][res[0]].add(tuple(region[1:]))
     p.close()
     p.join()
     refFa.close()
+    totalNumberNonspecificRegions=0
+    for primer,nonTargets in sorted(primersNonSpecRegions.items()):
+        if type(nonTargets)==int:
+            sumNum=nonTargets
+        else:
+            sumNum=0
+            if nonTargets!=None:
+                for chrom,regions in nonTargets.items():
+                    sumNum+=len(regions)
+        totalNumberNonspecificRegions+=sumNum
     print('\n # Total number of nonspecific regions:',totalNumberNonspecificRegions)
     logger.info(' # Total number of nonspecific regions: '+str(totalNumberNonspecificRegions))
     # Now we go through all primer pairs and check them for nonspecific amplicons within one pair of primers
@@ -1304,11 +1321,11 @@ def readBwaFile(read,maxPrimerNonspec,refFa,
         for primerPair in primersInfo.keys():
             if primersName in primerPair.split('_'):
                 primerNumInPair=primerPair.split('_').index(primersName)
-                strand=int((-1)**primerNumInPair)
+                infoStrand=int((-1)**primerNumInPair)
                 pos=int(primersInfo[primerPair][0][primerNumInPair][0])
                 try:
                     targetRegion=[primersInfo[primerPair][4],
-                                  strand*pos]
+                                  infoStrand*pos]
                 except TypeError:
                     print('ERROR!',primersInfo[primerPair][4],primersInfo[primerPair][0],primerNumInPair)
                     exit(15)
@@ -1360,21 +1377,6 @@ def readBwaFile(read,maxPrimerNonspec,refFa,
             continue
         seq=extractGenomeSeq(refFa,wholeGenomeRef,
                              chrom,abs(int(pos)),abs(int(pos))+regionLen-1)
-##        attempts=0
-##        seq=None
-##        while(seq is None):
-##            try:
-##                seq=refFa.fetch(region=chrom+':'+str(abs(int(pos)))+'-'+str(abs(int(pos))+regionLen-1))
-##            except Exception as e:
-##                seq=None
-##                attempts+=1
-##                if attempts>=10:                    
-##                    print('ERROR!',e)
-##                    logger.error(str(e))
-##                    print(refFa.filename)
-##                    logger.error(refFa.filename)
-##                    exit(16)
-        # Remove 
         # Determine, which sequence we should take: forward or reverse-complement
         ## If primer is on + strand and found region is on opposite
         ### or primer is on - strand and found region is on the same
@@ -1393,23 +1395,29 @@ def readBwaFile(read,maxPrimerNonspec,refFa,
                 exit(49)
         else:
             seq=seq.upper()
+        # Check if read sequence is the same as read qname
+        if read.qname==read.seq:
+            primerSeq=read.seq
+            regionSeq=seq
+        else:
+            primerSeq=read.qname
+            regionSeq=revComplement(seq)
         # If there is some insertions or deletion in found region
         if 'I' in cigar or 'D' in cigar:
             # We need to align its sequence with primer sequence
-            align=pairwise2.align.globalxx(read.seq,seq)
+            align=pairwise2.align.globalxx(primerSeq,regionSeq)
             # Check that 3'-ends of primers are identical
             ## and one of two nucleotides before 3'-ends are identical, too
-            if (align[0][0][-1]==align[0][1][-1] and
-                (align[0][0][-2]==align[0][1][-2] or
-                 align[0][0][-3]==align[0][1][-3])):
+            if (align[0][0][-1]==align[0][1][-1] or
+                align[0][0][-2]==align[0][1][-2]):
                 # Then we consider this region as a non-specific for this primer
                 primerNonSpecRegions.append([chrom,
                                              regStrand,
                                              abs(int(pos)),
                                              regionLen])
         else:
-            if seq[-1]==read.seq[-1] and (seq[-2]==read.seq[-2] or
-                                         seq[-3]==read.seq[-3]):
+            if (regionSeq[-1]==primerSeq[-1] or
+                regionSeq[-2]==primerSeq[-2]):
                 # Then we consider this region as a non-specific for this primer
                 primerNonSpecRegions.append([chrom,
                                              regStrand,
