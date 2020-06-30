@@ -363,4 +363,4 @@ This script converts the main NGS-PrimerPlex output file (*_info.xls* file) into
                         file for outputing draft file for NGS-PrimerPlex
 ```
 ## Citation
-Manuscript is preparing. Now you can cite to this repository.
+Manuscript is preparing. Now you can cite to this repository or the bioRxiv preprint: https://doi.org/10.1101/2020.06.29.176834 
