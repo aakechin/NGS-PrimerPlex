@@ -4,10 +4,13 @@ It includes four Python-scripts:
 * **NGS_primerplex.py** - script that designs primers for the user defined genome coordinates.
 * **addSeqToPrimers.py** - script that adds adapter sequences for all of the designed primers.
 * **convertToDraftFile.py** - script that converts the main NGS-PrimerPlex output file into the draft-primers file.
+
+## The detailed instructions of NGS-PrimerPlex installation and use are available at the [Wiki pages](https://github.com/aakechin/NGS-PrimerPlex/wiki).
+
 ## Docker use (RECOMMENDED!)
 NGS-PrimerPlex can be run as a [Docker](https://www.docker.com) image. In this way you only need to [install Docker](https://docs.docker.com/install/) (for windows 7 users [this install steps](https://docs.docker.com/toolbox/toolbox_install_windows/) should be performed). If you have "VD-x, VD-t error", you need to turn on virtualization in BIOS CPU section.
 
-Now users have two options of NGS-PrimerPlex use in docker: (1) with already uploaded human reference genome hg19 version, (2) without any reference genomes. The 1st variant is idead for use with hg19 genome, but you will have to download about 8 Gb of data. The 2nd is ideal for use with other reference genomes, including other organisms. In this case you will have to download about only 0.5 Gb, but you also have to download reference genome files manually (see section "Reference genome for other organisms than human").
+Now users have two options of NGS-PrimerPlex use in docker: (1) with already uploaded human reference genome hg19 version, (2) without any reference genomes. The 1st variant is ideal for use with hg19 genome, but you will have to download about 8 Gb of data. The 2nd is ideal for use with other reference genomes, including other organisms. In this case you will have to download about only 0.5 Gb, but you also have to download reference genome files manually (see section "Reference genome for other organisms than human").
 
 To use 1st variant, download docker image of NGS-PrimerPlex with the following command:
 
