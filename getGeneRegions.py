@@ -465,7 +465,6 @@ for t in targetGenes:
             if (t in mainTrascripts.keys() and
                 'transcript_id' in f.qualifiers.keys() and
                 mainTrascripts[t] in f.qualifiers['transcript_id'][0]):
-##                print('mRNA1')
                 mRNA_exons=f.location.parts
                 if args.includeNonCoding and t not in codons.keys():
                     geneFound=True
@@ -475,13 +474,11 @@ for t in targetGenes:
                 transcriptPat.findall(f.qualifiers['product'][0])[0]=='1' or
                 transcriptPat.findall(f.qualifiers['product'][0])[0]=='a'):
                 mRNA_exons=f.location.parts
-##                print('mRNA2')
                 if args.includeNonCoding and t not in codons.keys():
                     geneFound=True
                     writeRegions(resultFile,t,mRNA_exons,None,codons,exons,nucs)
                     break
             elif len(transcriptPat.findall(f.qualifiers['product'][0]))>0:
-##                print('mRNA3')
                 try:
                     key=int(transcriptPat.findall(f.qualifiers['product'][0])[0])
                     several_mRNA_isoformsNums[key]=f.location.parts
@@ -501,7 +498,6 @@ for t in targetGenes:
                 transcriptMatch=transcriptPat.findall(f.qualifiers['note'][0])
             else:
                 transcriptMatch=[]
-##            print('CDS0',isoformMatch,f.qualifiers['product'][0],transcriptMatch,f.qualifiers['note'][0])
             if ((t in mainProteins.keys() and
                  'protein_id' in f.qualifiers.keys() and
                  mainProteins[t] in f.qualifiers['protein_id'][0]) or
@@ -514,12 +510,14 @@ for t in targetGenes:
                  (transcriptMatch[0]=='1' or
                   transcriptMatch[0]=='a'))):
                 geneFound=True
-##                print('CDS1')
                 if (len(mRNA_exons)==0 and
                     len(several_mRNA_isoformsNums)==0 and
                     len(several_mRNA_isoformsWords)==0):
-                    print('ERROR (7)! mRNA feature was not found in the GenBank file '+refDir+'chr'+chrs[t]+'.gb for the gene '+t+'!')
-                    exit(7)
+                    print('WARNING (7)! mRNA feature was not found in the GenBank file '+refDir+chrs[t]+'.gb for the gene '+t+'!')
+                    mRNA_exons=f.location.parts
+                    if args.includeNonCoding and t not in codons.keys():
+                        writeRegions(resultFile,t,mRNA_exons,None,codons,exons,nucs)
+                        break
                 elif (len(mRNA_exons)==0 and
                       (len(several_mRNA_isoformsNums)>0 or
                        len(several_mRNA_isoformsWords)>0)):
