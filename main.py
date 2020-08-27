@@ -87,21 +87,21 @@ class MenuScreen(Screen):
         imageFound=False
         try:
             images=client.images.list()
+            for image in images:
+                if len(image.tags)>0:
+                    try:
+                        if global_image_names[0]==image.tags[0]:
+                            imageFound=True
+                            available_images[0]=True
+                        if global_image_names[1]==image.tags[0]:
+                            available_images[1]=True
+                        if global_image_names[2]==image.tags[0]:
+                            available_images[2]=True
+                    except:
+                        print('WARNING (14)! Could not get tags for the following image:')
+                        print(image.tags)
         except:
             print('WARNING (16)! Could not get list of available docker images!')
-        for image in images:
-            if len(image.tags)>0:
-                try:
-                    if global_image_names[0]==image.tags[0]:
-                        imageFound=True
-                        available_images[0]=True
-                    if global_image_names[1]==image.tags[0]:
-                        available_images[1]=True
-                    if global_image_names[2]==image.tags[0]:
-                        available_images[2]=True
-                except:
-                    print('WARNING (14)! Could not get tags for the following image:')
-                    print(image.tags)
         if not imageFound:
             self.ids['prepare_ref_status']='ERROR! Download aakechin/ngs-primerplex:latest first'
         try:
@@ -141,23 +141,23 @@ class MenuScreen(Screen):
         imageFound=False
         try:
             images=client.images.list()
+            for image in images:
+                if len(image.tags)>0:
+                    try:
+                        if global_image_names[0]==image.tags[0]:
+                            imageFound=True
+                            available_images[0]=True
+                        if global_image_names[1]==image.tags[0]:
+                            imageFound=True
+                            available_images[1]=True
+                        if global_image_names[2]==image.tags[0]:
+                            imageFound=True
+                            available_images[2]=True
+                    except:
+                        print('WARNING (14)! Could not get tags for the following image:')
+                        print(image.tags)
         except:
             print('WARNING (13)! Could not get list of available docker images!')
-        for image in images:
-            if len(image.tags)>0:
-                try:
-                    if global_image_names[0]==image.tags[0]:
-                        imageFound=True
-                        available_images[0]=True
-                    if global_image_names[1]==image.tags[0]:
-                        imageFound=True
-                        available_images[1]=True
-                    if global_image_names[2]==image.tags[0]:
-                        imageFound=True
-                        available_images[2]=True
-                except:
-                    print('WARNING (14)! Could not get tags for the following image:')
-                    print(image.tags)
         if not imageFound:
             self.ids['download_button'].disabled=False
             self.ids['extract_regions_menu_button'].disabled=True
@@ -176,17 +176,17 @@ class MenuScreen(Screen):
         imageFound=False
         try:
             images=client.images.list()
+            for image in images:
+                if len(image.tags)>0:
+                    try:
+                        if global_image_names[2]==image.tags[0]:
+                            imageFound=True
+                            available_images[2]=True
+                    except:
+                        print('WARNING (10)! Could not get tags for the following image:')
+                        print(image.tags)
         except:
             print('WARNING (12)! Could not get list of available docker images!')
-        for image in images:
-            if len(image.tags)>0:
-                try:
-                    if global_image_names[2]==image.tags[0]:
-                        imageFound=True
-                        available_images[2]=True
-                except:
-                    print('WARNING (10)! Could not get tags for the following image:')
-                    print(image.tags)
         if not imageFound:
             self.ids['prepare_ref_button'].disabled=False
         else:
