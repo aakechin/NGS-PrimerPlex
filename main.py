@@ -25,6 +25,7 @@ import time
 import docker
 import threading
 import json
+import requests
 from docker.types import Mount
 from functools import partial
 
@@ -100,6 +101,9 @@ class MenuScreen(Screen):
                     except:
                         print('WARNING (14)! Could not get tags for the following image:')
                         print(image.tags)
+        except requests.exceptions.ConnectionError as e:
+            print('WARNING (16)! Could not get list of available docker images!')
+            print('ERROR message:',e)
         except:
             print('WARNING (16)! Could not get list of available docker images!')
         if not imageFound:
@@ -156,6 +160,9 @@ class MenuScreen(Screen):
                     except:
                         print('WARNING (14)! Could not get tags for the following image:')
                         print(image.tags)
+        except requests.exceptions.ConnectionError as e:
+            print('WARNING (13)! Could not get list of available docker images!')
+            print('ERROR message:',e)
         except:
             print('WARNING (13)! Could not get list of available docker images!')
         if not imageFound:
@@ -185,6 +192,9 @@ class MenuScreen(Screen):
                     except:
                         print('WARNING (10)! Could not get tags for the following image:')
                         print(image.tags)
+        except requests.exceptions.ConnectionError as e:
+            print('WARNING (12)! Could not get list of available docker images!')
+            print('ERROR message:',e)
         except:
             print('WARNING (12)! Could not get list of available docker images!')
         if not imageFound:
