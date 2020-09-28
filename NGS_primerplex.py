@@ -982,6 +982,10 @@ def readDraftPrimers(draftFile,args,external=False):
                                args.dntpConc,args.primerConc,
                                args.leftAdapter,args.rightAdapter)
         if result[0]==False:
+            print('\nWARNING! The following primers form a secondary structure:')
+            logger.warning('The following primers form a secondary structure:')
+            print(row[0].replace('_',', '),result[1])
+            logger.warning(row[0].replace('_',', ')+' due to '+result[1])
             continue
         primersInfo[row[0]]=[[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]],
                              [int(row[5]),int(row[6])],
@@ -1170,7 +1174,7 @@ def checkPrimersSpecificity(inputFileBase,primersInfo,
                             substNum=1,threads=2,gui=False,
                             maxNonSpecLen=100,
                             maxPrimerNonspec=1000,
-                            external=False,varNum=''):
+                            external=False,varNum='',blastNum=1):
     # Dictionary for storing info about primers specificity by primers
     ## for checking specificity within one amplicon    
     primersNonSpecRegions={}
@@ -1196,8 +1200,8 @@ def checkPrimersSpecificity(inputFileBase,primersInfo,
     else:
         bwaResultFileName=inputFileBase+'_NGS_primerplex'+runName+'_all_primers_sequences.bwa'
     unspecificPrimers={}
-    for runNum in range(1):
-        if runNum==1:
+    for runNum in range(blastNum):
+        if runNum>=1:
             print('\n Running BWA again to search all regions...')
             logger.info(' Running BWA again to search all regions...')
         else:
@@ -2612,6 +2616,10 @@ par.add_argument('--substititutions-num','-subst',
                  dest='substNum',type=int,
                  help='accepted number of substitutions for searching primers in genome. Default: 2',
                  required=False,default=2)
+par.add_argument('--blast-num','-bnum',
+                 dest='blastNum',type=int,
+                 help='number of BWA runs to find all primer targets. It is recommended to increase for genes with many pseodugenes (e.g. CHEK2 or PMS2). Default: 1',
+                 required=False,default=1)
 par.add_argument('--max-nonspecific-amplicon-length','-maxnonspeclen',
                  dest='maxNonSpecLen',type=int,
                  help='maximal length of nonspecific amplicons that the program should consider. '
@@ -2960,7 +2968,7 @@ if args.primersFile:
         logger.info('Analyzing external primers for their specificity...')
         specificPrimers,primersNonSpecRegionsByChrs=checkPrimersSpecificity(args.regionsFile[:-4],extPrimersInfo,args.wholeGenomeRef,
                                                                             args.runName,refFa,args.substNum,args.threads,args.gui,
-                                                                            args.maxNonSpecLen,args.maxPrimerNonspec,True,str(i+1))
+                                                                            args.maxNonSpecLen,args.maxPrimerNonspec,True,str(i+1),args.blastNum)
         print(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
         logger.info(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
         # Write primers that left after filtering by specificity
@@ -3141,8 +3149,8 @@ if args.primersFile:
 else:
     # If user use as input draft primers
     if args.draftFile:
-        print('Reading file with draft primers...')
-        logger.info('Reading file with draft primers...')
+        print('Reading file with draft primers and checking them for interactions...')
+        logger.info('Reading file with draft primers and checking them for interactions...')
         # Read file with draft primers
         primersInfo,primersInfoByChrom,totalDraftPrimersNum=readDraftPrimers(args.draftFile,args)
         print(' # Number of primer pairs from draft file: '+str(totalDraftPrimersNum))
@@ -3185,7 +3193,7 @@ else:
         logger.info('Analyzing primers for their specificity...')
         specificPrimers,primersNonSpecRegionsByChrs=checkPrimersSpecificity(args.regionsFile[:-4],primersInfo,args.wholeGenomeRef,
                                                                             args.runName,refFa,args.substNum,args.threads,args.gui,
-                                                                            args.maxNonSpecLen,args.maxPrimerNonspec,False,'')    
+                                                                            args.maxNonSpecLen,args.maxPrimerNonspec,False,'',args.blastNum)    
         print(' # Number of specific primer pairs:',len(specificPrimers))
         logger.info(' # Number of specific primer pairs: '+str(len(specificPrimers)))
         # Now we need to remove all unspecific primers from constructed primer pairs
@@ -3462,8 +3470,8 @@ else:
             # If user use as input draft primers
             primer3Params={}
             if args.draftFile:
-                print('Reading file with draft primers...')
-                logger.info('Reading file with draft primers...')
+                print('Reading file with draft primers and checking them for interactions...')
+                logger.info('Reading file with draft primers and checking them for interactions...')
                 # Read file with draft primers
                 extPrimersInfo,extPrimersInfoByChrom,totalDraftPrimersNum=readDraftPrimers(args.draftFile,args,external=True)
                 print(' # Number of external primer pairs from draft file: '+str(totalDraftPrimersNum))
@@ -3613,7 +3621,7 @@ else:
                 logger.info('Analyzing external primers for their specificity...')
                 specificPrimers,primersNonSpecRegionsByChrs=checkPrimersSpecificity(args.regionsFile[:-4],extPrimersInfo,args.wholeGenomeRef,
                                                                                     args.runName,refFa,args.substNum,args.threads,args.gui,
-                                                                                    args.maxNonSpecLen,args.maxPrimerNonspec,True,str(i+1))
+                                                                                    args.maxNonSpecLen,args.maxPrimerNonspec,True,str(i+1),args.blastNum)
                 print(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
                 logger.info(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
                 # Write primers that left after filtering by specificity
