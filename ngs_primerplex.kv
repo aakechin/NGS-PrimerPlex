@@ -583,6 +583,24 @@ ScreenManager:
                         input_filter:'int'
                         pos_hint:{'x':0,'y':0}
                         write_tab: False
+                BoxLayout:
+                    size_hint:1,1
+                    orientation:'horizontal'
+                    Label:
+                        text:"BWA run num"
+                        color:0,0,0,1
+                        size_hint:0.77,1
+                        halign:'left'
+                        valign:'center'
+                        text_size:self.size
+                    TextInput:
+                        id:bnum
+                        text:'1'
+                        hint_text_color:0,0,0,1
+                        size_hint:0.23,1
+                        input_filter:'int'
+                        pos_hint:{'x':0,'y':0}
+                        write_tab: False
                 # Maximal primer non target hybridizations
                 BoxLayout:
                     size_hint:1,1
