@@ -561,7 +561,7 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
     print()
     p.close()
     p.join()
-    writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers.xls')
+    writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_all_draft_primers.xls')
     regionsWithoutPrimers=[]
     for curRegionName,ampls in amplNames.items():
         if len(ampls)==0:
@@ -1183,9 +1183,9 @@ def checkPrimersSpecificity(inputFileBase,primersInfo,
     primersNonSpecRegionsByChrs={}
     # Creating fasta-file with all primers' sequences
     if external:
-        seqFile=open(inputFileBase+'_NGS_primerplex'+runName+'_all_external_primers'+varNum+'_sequences.fa','w')
+        seqFile=open(inputFileBase+runName+'_all_external_primers'+varNum+'_sequences.fa','w')
     else:
-        seqFile=open(inputFileBase+'_NGS_primerplex'+runName+'_all_primers_sequences.fa','w')
+        seqFile=open(inputFileBase+runName+'_all_primers_sequences.fa','w')
     for key in primersInfo.keys():
         primers=key.split('_')
         for j,primer in enumerate(primers):
@@ -1196,9 +1196,9 @@ def checkPrimersSpecificity(inputFileBase,primersInfo,
                 primersNonSpecRegions[primer]=None                
     seqFile.close()
     if external:
-        bwaResultFileName=inputFileBase+'_NGS_primerplex'+runName+'_all_external_primers'+varNum+'_sequences.bwa'
+        bwaResultFileName=inputFileBase+runName+'_all_external_primers'+varNum+'_sequences.bwa'
     else:
-        bwaResultFileName=inputFileBase+'_NGS_primerplex'+runName+'_all_primers_sequences.bwa'
+        bwaResultFileName=inputFileBase+runName+'_all_primers_sequences.bwa'
     unspecificPrimers={}
     for runNum in range(blastNum):
         if runNum>=1:
@@ -1285,9 +1285,9 @@ def checkPrimersSpecificity(inputFileBase,primersInfo,
         varNum='_'+varNum
     if not external:
         # This file includes specificity information about all primers including those one that were not included to any output combination
-        wbw_spec=xls.Workbook(inputFileBase+'_NGS_primerplex'+runName+'_all_internal_primers_specificity.xls')
+        wbw_spec=xls.Workbook(inputFileBase+runName+'_all_internal_primers_specificity.xls')
     else:
-        wbw_spec=xls.Workbook(inputFileBase+'_NGS_primerplex'+runName+'_external_primers'+varNum+'_specificity.xls')
+        wbw_spec=xls.Workbook(inputFileBase+runName+'_external_primers'+varNum+'_specificity.xls')
     wsw_spec=wbw_spec.add_worksheet('Primers_specificity')
     wsw_spec.write_row(0,0,['Primer','Number_of_Nonspecific_regions'])
     colsWidth=[30,30]
@@ -2696,7 +2696,7 @@ inputFileBase=args.regionsFile[:-4]
 # Set logging
 logger=logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-handler=logging.FileHandler(inputFileBase+'_NGS_primerplex'+runName+'.log')
+handler=logging.FileHandler(inputFileBase+runName+'.log')
 handler.setLevel(logging.INFO)
 formatter=logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
@@ -2960,7 +2960,7 @@ if args.primersFile:
     p.close()
     p.join()
     writeDraftPrimers(extPrimersInfo,
-                      args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers.xls',
+                      args.regionsFile[:-4]+'_all_draft_primers.xls',
                       external=True)
     # Analyzing external primers specificity        
     if args.doBlast:
@@ -2973,7 +2973,7 @@ if args.primersFile:
         logger.info(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
         # Write primers that left after filtering by specificity
         writeDraftPrimers(extPrimersInfo,
-                          args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_specificity.xls',
+                          args.regionsFile[:-4]+'_all_draft_primers_after_specificity.xls',
                           goodPrimers=specificPrimers,
                           external=True)
     # Check external primers for covering high-frequent SNPs
@@ -2989,7 +2989,7 @@ if args.primersFile:
         logger.info(" # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
         # Write primers that left after filtering by SNPs
         writeDraftPrimers(extPrimersInfo,
-                          args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_SNPs.xls',
+                          args.regionsFile[:-4]+'_all_draft_primers_after_SNPs.xls',
                           goodPrimers=primerPairsNonCoveringSNPs,
                           external=True)
     # Now we need to remove unspecific primer pairs
@@ -3201,7 +3201,7 @@ else:
         logger.info(' Removing unspecific primer pairs...')
         primersInfoByChrom,primersInfo,amplNames=removeBadPrimerPairs(primersInfoByChrom,primersInfo,specificPrimers,primersToAmplNames,amplNames)
         # Write primers that left after filtering by specificity
-        writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_specificity.xls',specificPrimers)
+        writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_all_draft_primers_after_specificity.xls',specificPrimers)
         # If we filtered primers out by specificity, we need to check that all input regions are still covered
         amplNames,allRegions,regionNameToChrom,regionsCoords=checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regionsCoords,'by specificity',args.skipUndesigned)
         # If user wants to automatically sort amplicons by multiplexes
@@ -3234,11 +3234,11 @@ else:
             logger.info(" Removing primer pairs covering high-frequent SNPs...")
             primersInfoByChrom,primersInfo,amplNames=removeBadPrimerPairs(primersInfoByChrom,primersInfo,primerPairsNonCoveringSNPs,primersToAmplNames,amplNames)
             # Write primers that left after filtering by covering SNPs
-            writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_SNPs.xls',primerPairsNonCoveringSNPs)
+            writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_all_draft_primers_after_SNPs.xls',primerPairsNonCoveringSNPs)
             # If we filtered primers out that cover SNPs, we need to check that all input regions are still covered
             amplNames,allRegions,regionNameToChrom,regionsCoords=checkThatAllInputRegionsCovered(amplNames,allRegions,regionNameToChrom,regionsCoords,'that cover SNPs',args.skipUndesigned)
         else:
-            writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_SNPs.xls',primerPairsNonCoveringSNPs)
+            writeDraftPrimers(primersInfo,args.regionsFile[:-4]+'_all_draft_primers_after_SNPs.xls',primerPairsNonCoveringSNPs)
 
     # Now we need to group primers into continuous amplified blocks
     # amplified block contains all multiplexes for ditinct joined regions
@@ -3332,9 +3332,9 @@ else:
         print('Primers combination number '+str(i+1))
         logger.info('Primers combination number '+str(i+1))
         outputInternalPrimers={}
-        rFile=open(inputFileBase+'_NGS_primerplex'+runName+'_primers_combination_'+str(i+1)+'.fa','w')
-        rInternalFile=open(inputFileBase+'_NGS_primerplex'+runName+'_primers_combination_'+str(i+1)+'_internal_amplicons.fa','w')
-        wbw=xls.Workbook(inputFileBase+'_NGS_primerplex'+runName+'_primers_combination_'+str(i+1)+'_info.xls')
+        rFile=open(inputFileBase+runName+'_primers_combination_'+str(i+1)+'.fa','w')
+        rInternalFile=open(inputFileBase+runName+'_primers_combination_'+str(i+1)+'_internal_amplicons.fa','w')
+        wbw=xls.Workbook(inputFileBase+runName+'_primers_combination_'+str(i+1)+'_info.xls')
         wsw1=wbw.add_worksheet('NGS_Primerplex_Internal_Primers')
         wsw1.write_row(0,0,['#','Left_Primer_Seq','Right_Primer_Seq','Amplicon_Name','Chrom','Amplicon_Start','Amplicon_End','Amplicon_Length',
                            'Amplified_Block_Start','Amplified_Block_End','Left_Primer_Tm','Right_Primer_Tm','Left_Primer_Length','Right_Primer_Length','Left_GC','Right_GC','Desired_Multiplex','Designed_Multiplex'])
@@ -3343,7 +3343,7 @@ else:
         # If user wants to automatically sort primers pairs by multiplexes
         ## We create file for storing all problematic pairs of primers pairs
         if len(regionNameToMultiplex)>0:
-            multiplexProblemsWB=xls.Workbook(inputFileBase+'_NGS_primerplex'+runName+'_primers_combination_'+str(i+1)+'_amplicons_multiplex_incompatibility.xls')
+            multiplexProblemsWB=xls.Workbook(inputFileBase+runName+'_primers_combination_'+str(i+1)+'_amplicons_multiplex_incompatibility.xls')
             mpws=multiplexProblemsWB.add_worksheet('Internal_Primers')
             mpws.write_row(0,0,['Primers_Pair1','Primers_Pair2','Problem while joining to one multiplex'])
             colsWidth=[40,40,20]
@@ -3355,6 +3355,8 @@ else:
         globalMultiplexNums=nx.Graph()
         globalMultiplexesContainer={}
         amplNameToRowNum={}
+        # Converts amplicon name basis into variants of amplicon names
+        amplNamesToOutput={}
         # Chromosome in combination is chromosome number but in string format
         for chromIntStr,coords in sorted(comb.items(),
                                          key=lambda item:int(item[0])):
@@ -3392,23 +3394,30 @@ else:
                 else:
                     extendedAmplSeq=extractGenomeSeq(refFa,args.wholeGenomeRef,
                                                      chromName,amplStart-1-100,amplEnd+100)
-##                out=pysam.faidx(wgref,chromName+':'+str(amplStart-1-100)+'-'+str(amplEnd+100))
-##                lines=out.split('\n')
-##                if lines[1]=='':
-##                    print('ERROR! Extracted sequence has no length')
-##                    print(chromName,amplStart-1-100,amplEnd+100)
-##                    exit(40)
-##                extendedAmplSeq=''.join(lines[1:-1]).upper()
                 rInternalFile.write('\n'.join(['>'+primersToAmplNames['_'.join(c)][0],extendedAmplSeq])+'\n')
                 amplName=primersToAmplNames['_'.join(c)][0]
                 regionName=amplName[:amplName.rfind('_')]
-                if len(regionNameToMultiplex)>0:
-                    wsw1.write_row(rowNum,0,[rowNum,c[0],c[1],amplName,chromName,amplStart,amplEnd,amplLen,amplBlockStart,amplBlockEnd,
-                                            leftPrimerTm,rightPrimerTm,len(c[0]),len(c[1]),leftGC,rightGC,','.join(regionNameToMultiplex[regionName])])
+                # Make simple name for amplicon
+                targetName=regionName[:regionName.rfind('_')]
+                if targetName not in amplNamesToOutput.keys():
+                    amplNamesToOutput[targetName]=[rowNum,targetName]
+                elif len(amplNamesToOutput[targetName])==2:
+                    amplNamesToOutput[targetName][1]+='_1'
+                    wsw1.write(amplNamesToOutput[targetName][0],3,amplNamesToOutput[targetName][1])
+                    amplNamesToOutput[targetName].append(targetName+'_2')
                 else:
-                    wsw1.write_row(rowNum,0,[rowNum,c[0],c[1],amplName,chromName,amplStart,amplEnd,amplLen,amplBlockStart,amplBlockEnd,
+                    prevNum=amplNamesToOutput[targetName][-1].split('_')[-1]
+                    amplNamesToOutput[targetName].append(targetName+'_'+str(int(prevNum)+1))
+                if len(regionNameToMultiplex)>0:
+                    wsw1.write_row(rowNum,0,[rowNum,c[0],c[1],amplNamesToOutput[targetName][-1],
+                                             chromName,amplStart,amplEnd,amplLen,amplBlockStart,amplBlockEnd,
+                                            leftPrimerTm,rightPrimerTm,len(c[0]),len(c[1]),
+                                             leftGC,rightGC,','.join(regionNameToMultiplex[regionName])])
+                else:
+                    wsw1.write_row(rowNum,0,[rowNum,c[0],c[1],amplNamesToOutput[targetName][-1],
+                                             chromName,amplStart,amplEnd,amplLen,amplBlockStart,amplBlockEnd,
                                             leftPrimerTm,rightPrimerTm,len(c[0]),len(c[1]),leftGC,rightGC])
-                outputInternalPrimers[primersToAmplNames['_'.join(c)][0]]=[c[0],c[1],amplName,chromName,
+                outputInternalPrimers[primersToAmplNames['_'.join(c)][0]]=[c[0],c[1],amplNamesToOutput[targetName][-1],chromName,
                                                                            amplStart,amplEnd,amplLen,amplBlockStart,
                                                                            amplBlockEnd,leftPrimerTm,rightPrimerTm,len(c[0]),
                                                                            len(c[1]),leftGC,rightGC]
@@ -3613,7 +3622,7 @@ else:
                 p.close()
                 p.join()
             writeDraftPrimers(extPrimersInfo,
-                              args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers.xls',
+                              args.regionsFile[:-4]+'_all_draft_primers.xls',
                               external=True)
             # Analyzing external primers specificity        
             if args.doBlast:
@@ -3626,7 +3635,7 @@ else:
                 logger.info(' # Number of specific external primer pairs: '+str(len(specificPrimers))+'. Unspecific pairs will be removed.')
                 # Write primers that left after filtering by specificity
                 writeDraftPrimers(extPrimersInfo,
-                                  args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_specificity.xls',
+                                  args.regionsFile[:-4]+'_all_draft_primers_after_specificity.xls',
                                   goodPrimers=specificPrimers,
                                   external=True)
             # Check external primers for covering high-frequent SNPs
@@ -3642,7 +3651,7 @@ else:
                 logger.info(" # Number of primers covering high-frequent SNPs: "+str(len(primersCoveringSNPs))+'. They will be removed.')
                 # Write primers that left after filtering by SNPs
                 writeDraftPrimers(extPrimersInfo,
-                                  args.regionsFile[:-4]+'_NGS_primerplex_all_draft_primers_after_SNPs.xls',
+                                  args.regionsFile[:-4]+'_all_draft_primers_after_SNPs.xls',
                                   goodPrimers=primerPairsNonCoveringSNPs,
                                   external=True)
             # Now we need to remove unspecific primer pairs
@@ -3727,7 +3736,7 @@ else:
                             globalMultiplexNums.remove_edge(node,regionName)
                 multiplexProblemsWB.close()
             rowNum=1
-            rExternalFile=open(inputFileBase+'_NGS_primerplex'+runName+'_primers_combination_'+str(i+1)+'_external_amplicons.fa','w')
+            rExternalFile=open(inputFileBase+runName+'_primers_combination_'+str(i+1)+'_external_amplicons.fa','w')
             for chrom,coords in sorted(primersForOutput.items(),
                                        key=lambda item:(nameToNum[item[0]],
                                                         item[1])):
