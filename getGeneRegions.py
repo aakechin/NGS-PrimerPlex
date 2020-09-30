@@ -273,7 +273,7 @@ def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs
                             resultFile.write('\t'.join([chrs[targetGene],
                                                         str(mRNA[exNum2][1]-fromStart2),
                                                         str(mRNA[exNum1][1]-fromStart1),
-                                                        '_'.join([targetGene,regStr]),
+                                                        '_'.join([targetGene,'p'+regStr]),
                                                         '1','B','NotW'])+'\n')
                         except KeyError:
                             print('ERROR (3)!',exNum1,exNum2)
@@ -283,65 +283,65 @@ def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs
                         resultFile.write('\t'.join([chrs[targetGene],
                                                     str(mRNA[exNum1][0]+1+fromStart1),
                                                     str(mRNA[exNum2][0]+1+fromStart2),
-                                                    '_'.join([targetGene,regStr]),
+                                                    '_'.join([targetGene,'p'+regStr]),
                                                     '1','B','NotW'])+'\n')
                 elif exNum2-exNum1==1:
                     if list(mRNA.values())[0][2]==-1:
                         resultFile.write('\t'.join([chrs[targetGene],
                                                     str(mRNA[exNum1][0]+1),
                                                     str(mRNA[exNum1][1]-fromStart1),
-                                                    '_'.join([targetGene,regStr]),
+                                                    '_'.join([targetGene,'p'+regStr]),
                                                     '1','B','NotW'])+'\n')
                         resultFile.write('\t'.join([chrs[targetGene],
                                                     str(mRNA[exNum2][1]-fromStart2),
                                                     str(mRNA[exNum2][1]),
-                                                    '_'.join([targetGene,regStr]),
+                                                    '_'.join([targetGene,'p'+regStr]),
                                                     '1','B','NotW'])+'\n')
                     else:
                         resultFile.write('\t'.join([chrs[targetGene],
                                                     str(mRNA[exNum1][0]+1+fromStart1),
                                                     str(mRNA[exNum1][1]),
-                                                    '_'.join([targetGene,regStr]),
+                                                    '_'.join([targetGene,'p'+regStr]),
                                                     '1','B','NotW'])+'\n')
                         resultFile.write('\t'.join([chrs[targetGene],
                                                     str(mRNA[exNum2][0]+1),
                                                     str(mRNA[exNum2][0]+1+fromStart2),
-                                                    '_'.join([targetGene,regStr]),
+                                                    '_'.join([targetGene,'p'+regStr]),
                                                     '1','B','NotW'])+'\n')
                 else:
                     if list(mRNA.values())[0][2]==-1:
                         resultFile.write('\t'.join([chrs[targetGene],
                                                     str(mRNA[exNum1][0]+1),
                                                     str(mRNA[exNum1][1]-fromStart1),
-                                                    '_'.join([targetGene,regStr]),
+                                                    '_'.join([targetGene,'p'+regStr]),
                                                     '1','B','NotW'])+'\n')
                         for j in range(exNum1+1,exNum2):
                             resultFile.write('\t'.join([chrs[targetGene],
                                                         str(mRNA[j][0]+1),
                                                         str(mRNA[j][1]),
-                                                        '_'.join([targetGene,regStr]),
+                                                        '_'.join([targetGene,'p'+regStr]),
                                                         '1','B','NotW'])+'\n')
                         resultFile.write('\t'.join([chrs[targetGene],
                                                     str(mRNA[exNum2][1]-fromStart2),
                                                     str(mRNA[exNum2][1]),
-                                                    '_'.join([targetGene,regStr]),
+                                                    '_'.join([targetGene,'p'+regStr]),
                                                     '1','B','NotW'])+'\n')
                     else:
                         resultFile.write('\t'.join([chrs[targetGene],
                                                     str(mRNA[exNum1][0]+1+fromStart1),
                                                     str(mRNA[exNum1][1]),
-                                                    '_'.join([targetGene,regStr]),
+                                                    '_'.join([targetGene,'p'+regStr]),
                                                     '1','B','NotW'])+'\n')
                         for j in range(exNum1+1,exNum2):
                             resultFile.write('\t'.join([chrs[targetGene],
                                                         str(mRNA[j][0]+1),
                                                         str(mRNA[j][1]),
-                                                        '_'.join([targetGene,regStr]),
+                                                        '_'.join([targetGene,'p'+regStr]),
                                                         '1','B','NotW'])+'\n')
                         resultFile.write('\t'.join([chrs[targetGene],
                                                     str(mRNA[exNum2][0]+1),
                                                     str(mRNA[exNum2][0]+1+fromStart2),
-                                                    '_'.join([targetGene,regStr]),
+                                                    '_'.join([targetGene,'p'+regStr]),
                                                     '1','B','NotW'])+'\n')
         if targetGene in exons.keys():
             for exRange in exons[targetGene]:
