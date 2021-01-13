@@ -67,6 +67,7 @@ def readInputFile(regionsFile):
                 chromInt=nameToNum[chrom]
             else:
                 print('ERROR (56)! Incorrect format of chromosome!')
+                print(cols)
                 print('According to the defined reference genome, chromosome names are:')
                 print(sorted(nameToNum.keys()))
                 print('Or you can use numbers of chromosome, and they correspond to the following names:')
@@ -123,15 +124,24 @@ def readInputFile(regionsFile):
                     else:
                         endShift=0
                     if chrom not in allRegions.keys():
-                        allRegions[chrom]={curRegionName:[chrom,i,i+endShift,curRegionName]}
+                        if endShift>0:
+                            allRegions[chrom]={curRegionName:[chrom,regStart,regStart+endShift,curRegionName]}
+                        else:
+                            allRegions[chrom]={curRegionName:[chrom,i,i+endShift,curRegionName]}
                         regionsCoords[chromInt]=[i]
                         uniquePointRegions+=1
                     else:
                         # Addtionally check that all input regions are unique
-                        if [chrom,i,i+endShift,curRegionName] not in allRegions[chrom].values():
-                            allRegions[chrom][curRegionName]=[chrom,i,i+endShift,curRegionName]
-                            regionsCoords[chromInt].append(i)
-                            uniquePointRegions+=1
+                        if endShift>0:
+                            if [chrom,regStart,regStart+endShift,curRegionName] not in allRegions[chrom].values():
+                                allRegions[chrom][curRegionName]=[chrom,regStart,regStart+endShift,curRegionName]
+                                regionsCoords[chromInt].append(regStart)
+                                uniquePointRegions+=1
+                        else:
+                            if [chrom,i,i+endShift,curRegionName] not in allRegions[chrom].values():
+                                allRegions[chrom][curRegionName]=[chrom,i,i+endShift,curRegionName]
+                                regionsCoords[chromInt].append(i)
+                                uniquePointRegions+=1
                     if endShift>0:
                         for i in range(regStart+1,regEnd+1):
                             regionsCoords[chromInt].append(i)
@@ -954,49 +964,101 @@ def readDraftPrimers(draftFile,args,external=False):
     primersInfo={}
     primersInfoByChrom={}
     totalDraftPrimersNum=0
+    primerPairToMultiplex={}
     showPercWork(0,ws.nrows)
+    # Stores which format does the draft-file have
+    # If True, draft-file is like draft-file
+    # else, it is as info-file
+    draftIsDraft=False
     for i in range(ws.nrows):
-        if i==0:
-            continue
         row=ws.row_values(i)
-        ##    [primersCoords[2*i:2*i+2],primerTms[2*i:2*i+2],amplLens[i],amplScores[i],chrom]
-        chrom=getChrNum(row[9])
-        chromInt=nameToNum[chrom]
-        totalDraftPrimersNum+=1
-        # Checking that this primer pair doesn't form secondary structures
-        # checkPrimersFir uses the following arguments:
-        # primers,primersToCompare,
-        # minmultdimerdg1=-6,minmultdimerdg2=-10,
-        # maxIntersectionOfPrimers=5,
-        # unspecificPrimers=[],
-        # mv_conc=50,dv_conc=3,
-        # dntp_conc=0.8,dna_conc=250,
-        # leftAdapter=None,rightAdapter=None)
-        # primers arguments have the following format:
-        # leftPrimer,rightPrimer,chrom,amplStart,amplEnd
-        result=checkPrimersFit([*row[0].split('_'),str(chrom),int(row[1]),int(row[3])],
-                               [*row[0].split('_'),'',str(chrom),int(row[1]),int(row[3])],
-                               args.minMultDimerdG1,
-                               args.minMultDimerdG2,
-                               1000000,[],args.mvConc,args.dvConc,
-                               args.dntpConc,args.primerConc,
-                               args.leftAdapter,args.rightAdapter)
-        if result[0]==False:
-            print('\nWARNING! The following primers form a secondary structure:')
-            logger.warning('The following primers form a secondary structure:')
-            print(row[0].replace('_',', '),result[1])
-            logger.warning(row[0].replace('_',', ')+' due to '+result[1])
+        if i==0:
+            if row[0]=='Primer_Pair':
+                draftIsDraft=True
             continue
-        primersInfo[row[0]]=[[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]],
-                             [int(row[5]),int(row[6])],
-                             int(row[7]),int(row[8]),str(chrom)]
-        if chromInt not in primersInfoByChrom.keys():
-            primersInfoByChrom[chromInt]={row[0]:[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]}
-        elif row[0] not in primersInfoByChrom[chromInt].keys():
-            primersInfoByChrom[chromInt][row[0]]=[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]
+        ##    [primersCoords[2*i:2*i+2],primerTms[2*i:2*i+2],amplLens[i],amplScores[i],chrom]
+        if draftIsDraft:
+            chrom=getChrNum(row[9])
+            chromInt=nameToNum[chrom]
+            totalDraftPrimersNum+=1
+            # Checking that this primer pair doesn't form secondary structures
+            # checkPrimersFir uses the following arguments:
+            # primers,primersToCompare,
+            # minmultdimerdg1=-6,minmultdimerdg2=-10,
+            # maxIntersectionOfPrimers=5,
+            # unspecificPrimers=[],
+            # mv_conc=50,dv_conc=3,
+            # dntp_conc=0.8,dna_conc=250,
+            # leftAdapter=None,rightAdapter=None)
+            # primers arguments have the following format:
+            # leftPrimer,rightPrimer,chrom,amplStart,amplEnd
+            result=checkPrimersFit([*row[0].split('_'),str(chrom),int(row[1]),int(row[3])],
+                                   [*row[0].split('_'),'',str(chrom),int(row[1]),int(row[3])],
+                                   args.minMultDimerdG1,
+                                   args.minMultDimerdG2,
+                                   1000000,[],args.mvConc,args.dvConc,
+                                   args.dntpConc,args.primerConc,
+                                   args.leftAdapter,args.rightAdapter)
+            if result[0]==False:
+                print('\nWARNING! The following primers form a secondary structure:')
+                logger.warning('The following primers form a secondary structure:')
+                print(row[0].replace('_',', '),result[1])
+                logger.warning(row[0].replace('_',', ')+' due to '+result[1])
+                continue
+            primersInfo[row[0]]=[[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]],
+                                 [int(row[5]),int(row[6])],
+                                 int(row[7]),int(row[8]),str(chrom)]
+            if chromInt not in primersInfoByChrom.keys():
+                primersInfoByChrom[chromInt]={row[0]:[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]}
+            elif row[0] not in primersInfoByChrom[chromInt].keys():
+                primersInfoByChrom[chromInt][row[0]]=[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]
+        else:
+            chrom=getChrNum(row[4])
+            chromInt=nameToNum[chrom]
+            totalDraftPrimersNum+=1
+            # Checking that this primer pair doesn't form secondary structures
+            # checkPrimersFir uses the following arguments:
+            # primers,primersToCompare,
+            # minmultdimerdg1=-6,minmultdimerdg2=-10,
+            # maxIntersectionOfPrimers=5,
+            # unspecificPrimers=[],
+            # mv_conc=50,dv_conc=3,
+            # dntp_conc=0.8,dna_conc=250,
+            # leftAdapter=None,rightAdapter=None)
+            # primers arguments have the following format:
+            # leftPrimer,rightPrimer,chrom,amplStart,amplEnd
+            result=checkPrimersFit([row[1],row[2],str(chrom),int(row[5]),int(row[6])],
+                                   [row[1],row[2],'',str(chrom),int(row[5]),int(row[6])],
+                                   args.minMultDimerdG1,
+                                   args.minMultDimerdG2,
+                                   1000000,[],args.mvConc,args.dvConc,
+                                   args.dntpConc,args.primerConc,
+                                   args.leftAdapter,args.rightAdapter)
+            if result[0]==False:
+                print('\nWARNING! The following primers form a secondary structure:')
+                logger.warning('The following primers form a secondary structure:')
+                print(row[1],row[2],result[1])
+                logger.warning(', '.join(row[1:3])+' due to '+result[1])
+                continue
+            primerPair='_'.join(row[1:3])
+            primersInfo[primerPair]=[[[int(row[5]),int(row[12])],[int(row[6]),int(row[13])]],
+                                     [int(row[10]),int(row[11])],
+                                     int(row[7]),100,str(chrom)]
+            if chromInt not in primersInfoByChrom.keys():
+                primersInfoByChrom[chromInt]={primerPair:[[int(row[5]),int(row[12])],[int(row[6]),int(row[13])]]}
+            elif primerPair not in primersInfoByChrom[chromInt].keys():
+                primersInfoByChrom[chromInt][primerPair]=[[int(row[5]),int(row[12])],[int(row[6]),int(row[13])]]
+            if row[17]!='' and row[17]!=' ':
+                primerPairToMultiplex[primerPair]=int(row[17])
+##                if int(row[17]) not in readyMultiplexesDict.keys():
+##                    readyMultiplexesDict[int(row[17])]=[]
+##                readyMultiplexesDict[int(row[17])].append(primerPair)
+##            for poolNum,primers in sorted(readyMultiplexesDict.items(),
+##                                          key=lambda item:item[0]):
+##                readyMultiplexes.append(primers)
         showPercWork(i+1,ws.nrows)
     print()
-    return(primersInfo,primersInfoByChrom,totalDraftPrimersNum)
+    return(primersInfo,primersInfoByChrom,totalDraftPrimersNum,primerPairToMultiplex)
 
 def getChrNum(chrom):
     try:
@@ -1007,13 +1069,20 @@ def getChrNum(chrom):
             exit(55)
     return(chrom)
 
-def getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom):
+def getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom,primerPairToMultiplex):
     # allRegions[chrom]={curRegionName:[chrom,i,i+endShift,curRegionName]}
     # primersInfoByChrom[int(chrom)]['_'.join(primerSeqs[2*i:2*i+2])]=primersCoords[2*i:2*i+2]
     amplNames={}
     primersToAmplNames={}
     uncoveredRegions=deepcopy(allRegions)
     uncoveredPositions=0
+    readyMultiplexes=[]
+    for i in sorted(set(primerPairToMultiplex.values())):
+        # If the current pool number is more that the list size
+        if i-1>len(readyMultiplexes):
+            for j in range(i-len(readyMultiplexes)-1):
+                readyMultiplexes.append([])
+        readyMultiplexes.append([])
     for chromInt,coords in primersInfoByChrom.items():
         coordToRegionName={}
         chrom=numToName[chromInt]
@@ -1038,6 +1107,9 @@ def getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom):
                         primersToAmplNames[primerPair]=[curAmplName]
                     else:
                         primersToAmplNames[primerPair].append(curAmplName)
+                    if (primerPair in primerPairToMultiplex.keys() and
+                        len(primersToAmplNames[primerPair])==1):
+                        readyMultiplexes[primerPairToMultiplex[primerPair]-1].append(curAmplName)
                     if (curRegionName in uncoveredRegions[chrom].keys() and
                         allRegions[chrom][curRegionName][1]==allRegions[chrom][curRegionName][2]):
                         uncoveredRegions[chrom].pop(curRegionName)
@@ -1045,7 +1117,7 @@ def getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom):
                           coord[0][0]+coord[0][1]<=allRegions[chrom][curRegionName][1] and
                           coord[1][0]-coord[1][1]>=allRegions[chrom][curRegionName][2]):
                         uncoveredRegions[chrom].pop(curRegionName)
-                        break
+##                        break
         uncoveredPositions+=len(uncoveredRegions[chrom])
         if len(uncoveredRegions[chrom])==0:
             uncoveredRegions.pop(chrom)
@@ -1055,7 +1127,7 @@ def getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom):
             uncoveredPositions+=len(uncoveredRegions[chrom])
     print(' # Total number of uncovered positions:',uncoveredPositions)
     logger.info(' # Total number of uncovered positions: '+str(uncoveredPositions))
-    return(uncoveredRegions,amplNames,primersToAmplNames)
+    return(uncoveredRegions,amplNames,primersToAmplNames,readyMultiplexes)
 
 def getRegionsUncoveredByDraftExternalPrimers(primersInfo,primersInfoByChrom,outputInternalPrimers,args,refFa):
     # primersInfo[primer1_primer2]=[[[leftStart,primerLength],[rightEnd,rightLength]],
@@ -2081,59 +2153,73 @@ def comparePrimersOfTwoBlocks(block1,block2,unspecificPrimers):
                         interactions+=1
     return(interactions)
 
-def makeFinalMultiplexes(initialGraph,multiplexes=[],multNum=2,functionFirstCall=False):
-    # We try to make cliques from it
-    if len(initialGraph)==0:
-        return(multiplexes)
-    elif len(initialGraph.nodes())==1:
-        return(multiplexes+[initialGraph.nodes()])
-    elif (len(initialGraph.nodes())==multNum and
-          len(multiplexes)==0):
-        return([[x] for x in initialGraph.nodes()])
+def makeFinalMultiplexes(initialGraph,multiplexes=[],
+                         currentMultNum=2,totalMultNum=2,
+                         functionFirstCall=False):
     graph=deepcopy(initialGraph)
-    nodesNums={}
-    for node in graph.nodes():
-        nodesNums[node]=graph.degree(node)
-    if multNum==0:
-        return(multiplexes)
-    minNodesNum=math.floor(len(initialGraph)/multNum)
-    maxNodesNum=math.ceil(len(initialGraph)/multNum)
-    cls=[]
-    edgelist=graph.edges()
-    random.shuffle(edgelist)
-    graph=nx.Graph(edgelist)
-    for i,cl in enumerate(clique.find_cliques(graph)):
-        if len(cl)>1:
-            cls.append(cl)
-            break
-    if len(cls)==0:
-        print("ERROR! Cannot choose multiplex (clique) from designed graph!")
-        print('Length of input graph is:',len(initialGraph))
-        print(initialGraph.edges())
-        exit(26)
-    if len(cls[0])>maxNodesNum:
-        # Sort by number of nodes to which this node is linked by edges
-        cls[0]=sorted(cls[0],key=graph.degree)
-        cls[0]=cls[0][:-(len(cls[0])-maxNodesNum)]
-    multiplexes.append(cls[0])
-    graph.remove_nodes_from(cls[0])
-    if len(graph)>0 and multNum-1>0:
-        multiplexes=makeFinalMultiplexes(graph,multiplexes,multNum-1,False)
-    if functionFirstCall:
-        for multiplex in multiplexes:
-            for multAmplicon in multiplex:
-                if multAmplicon in graph.nodes():
-                    graph.remove_node(multAmplicon)
-    # If there are some nodes that were not sorted to any of multiplexes
-    # This is the first call of this function
+    # If number of multiplexes already designed is equal to the total number of multiplexes
+    if len(multiplexes)!=totalMultNum:
+        # We try to make cliques from it
+        if len(initialGraph)==0:
+            return(multiplexes)
+        elif len(initialGraph.nodes())==1:
+            return(multiplexes+[initialGraph.nodes()])
+        elif (len(initialGraph.nodes())==currentMultNum and
+              len(multiplexes)==0):
+            return([[x] for x in initialGraph.nodes()])
+        # Save degrees for each node
+        # It will be used if the clique size will be more than it is expected
+        nodesNums={}
+        for node in graph.nodes():
+            nodesNums[node]=graph.degree(node)
+        if currentMultNum==0:
+            return(multiplexes)
+        minNodesNum=math.floor(len(initialGraph)/currentMultNum)
+        maxNodesNum=math.ceil(len(initialGraph)/currentMultNum)
+        cls=[]
+        edgelist=graph.edges()
+        random.shuffle(edgelist)
+        graph=nx.Graph(edgelist)
+        for i,cl in enumerate(clique.find_cliques(graph)):
+            if len(cl)>1:
+                cls.append(cl)
+                break
+        if len(cls)==0:
+            print("ERROR (26)! Cannot choose multiplex (clique) from designed graph!")
+            print('Length of input graph is:',len(initialGraph))
+            print(initialGraph.edges())
+            exit(26)
+        if len(cls[0])>maxNodesNum:
+            # Sort by number of nodes to which this node is linked by edges
+            cls[0]=sorted(cls[0],key=graph.degree)
+            cls[0]=cls[0][:-(len(cls[0])-maxNodesNum)]
+        # Save found clique
+        multiplexes.append(cls[0])
+        # Remove elements of the clique from the Graph
+        graph.remove_nodes_from(cls[0])
+        # If the number of elements left unsorted is more than 0
+        # and the current multiplex number is more than 1
+        if len(graph)>0 and currentMultNum-1>0:
+            # Sort unsorted elements of the graph
+            multiplexes=makeFinalMultiplexes(graph,multiplexes,currentMultNum-1,False)
+        if functionFirstCall:
+            for multiplex in multiplexes:
+                for multAmplicon in multiplex:
+                    if multAmplicon in graph.nodes():
+                        graph.remove_node(multAmplicon)
+    else:
+        for mult in multiplexes:
+            graph.remove_nodes_from(mult)
+    # If there are some nodes that were not sorted to any of multiplexes and
+    # this is the first call of this function
     if len(graph.nodes())>0 and functionFirstCall:
         currentMultNumToAdd=0
-        # Go through all undorted nodes
+        # Go through all unsorted nodes
         for leftUnsortedNode in graph.nodes():
             multNumsToWhichWeTried=[]
             neighbours=initialGraph.neighbors(leftUnsortedNode)
             # Go through all multiplexes and try to add the unsorted node to this multiplex
-            while(len(multNumsToWhichWeTried)<multNum):
+            while(len(multNumsToWhichWeTried)<currentMultNum):
                 thisAmpliconFitsThisMultiplex=True
                 # If current unsorted amplicon is linked to all amplicons of current multiplex,
                 # add this amplicons to this multiplex
@@ -2146,11 +2232,11 @@ def makeFinalMultiplexes(initialGraph,multiplexes=[],multNum=2,functionFirstCall
                     break
                 multNumsToWhichWeTried.append(currentMultNumToAdd)
                 currentMultNumToAdd+=1
-                if currentMultNumToAdd>multNum-1:
+                if currentMultNumToAdd>currentMultNum-1:
                     currentMultNumToAdd=0
     return(multiplexes)
 
-def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,args):
+def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,args,readyMultiplexes=[]):
     multiplexes=[]
     leftUnsortedAmpls=[]
     for k,(key,containerNodes) in enumerate(globalMultiplexesContainer.items()):
@@ -2158,20 +2244,23 @@ def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,ar
         logger.info('Sorting amplicons to multiplexes '+str(key)+' (contain '+str(len(containerNodes+leftUnsortedAmpls))+' amplicons)...')
         mults=key.split('_')
         localMultiplexNums=nx.Graph()
+        # Create subgraph for primer pairs that should be sorted to the same set of pools (e.g. current is 1_2, but some another 3_4)
         localMultiplexNums=globalMultiplexNums.subgraph(containerNodes+leftUnsortedAmpls)
         cls=[]
-        cls=makeFinalMultiplexes(localMultiplexNums,[],len(mults),True)
+        cls=makeFinalMultiplexes(localMultiplexNums,readyMultiplexes,len(mults),len(mults),True)
         multiplexes.extend(cls)
         sumLen=sum([len(x) for x in cls])
         allSortedAmpls=[]
         for x in cls:
             allSortedAmpls.extend(x)
+        # The number of primer pairs already sorted is equal to the number of primer pairs that we wanted to sort
         if sumLen==len(localMultiplexNums):
             print(' # Number of multiplexes:',len(cls))
             logger.info(' # Number of multiplexes: '+str(len(cls)))
             for z,cl in enumerate(cls):
                 print('  # Number of amplicons in multiplex',mults[z],len(cl))
                 logger.info('  # Number of amplicons in multiplex '+mults[z]+': '+str(len(cl)))
+        # The number of primer pairs already sorted is less than the number of primer pairs that we wanted to sort
         elif sum([len(x) for x in cls])<len(localMultiplexNums):
             print('Number of designed multiplexes:',len(cls))
             logger.warn(' # Number of designed multiplexes: '+str(len(cls)))
@@ -2193,10 +2282,12 @@ def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,ar
                 print('NGS_primerplex will try to add them to the next group of multiplexes.')
                 logger.warn('NGS_primerplex will try to add them to the next group of multiplexes.')
         else:
-            print('UNKNOWN ERROR! Number of nodes in the final graph is more than in the initial graph!')
+            print('UNKNOWN ERROR (27)! Number of nodes in the final graph is more than in the initial graph!')
+            print('Such error can be due to the use of the draft-file with the number of multiplexes more than it is defined in the regions file')
             print(localMultiplexNums.nodes())
             print(cls)
-            logger.error('UNKNOWN ERROR! Number of nodes in the final graph is more than in the initial graph!')
+            logger.error('UNKNOWN ERROR (27)! Number of nodes in the final graph is more than in the initial graph!')
+            logger.error('Such error can be due to the use of the draft-file with the number of multiplexes more than it is defined in the regions file')
             logger.error(str(localMultiplexNums.nodes()))
             logger.error(str(cls))
             exit(27)
@@ -3152,7 +3243,7 @@ else:
         print('Reading file with draft primers and checking them for interactions...')
         logger.info('Reading file with draft primers and checking them for interactions...')
         # Read file with draft primers
-        primersInfo,primersInfoByChrom,totalDraftPrimersNum=readDraftPrimers(args.draftFile,args)
+        primersInfo,primersInfoByChrom,totalDraftPrimersNum,primerPairToMultiplex=readDraftPrimers(args.draftFile,args)
         print(' # Number of primer pairs from draft file: '+str(totalDraftPrimersNum))
         logger.info(' # Number of primer pairs from draft file: '+str(totalDraftPrimersNum))
         print(' # That do not form secondary structures: '+str(len(primersInfo)))
@@ -3161,7 +3252,9 @@ else:
         # Get regions that uncovered by already designed primers
         print('Getting positions that uncovered by draft primers...')
         logger.info('Getting positions that uncovered by draft primers...')
-        uncoveredRegions,amplNames,primersToAmplNames=getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom)
+        uncoveredRegions,amplNames,primersToAmplNames,readyMultiplexes=getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom,
+                                                                                                         primerPairToMultiplex)
+##        print(uncoveredRegions)
         if len(uncoveredRegions)>0:
             # Go through all regions sorted by chromosome and coordinate of start
             print('Creating input parameters for primer3...')
@@ -3176,7 +3269,9 @@ else:
                                                                                                                                                   primersInfo,primersInfoByChrom,amplNames,primersToAmplNames)
             print('Total number of primer pairs: '+str(len(primersInfo)))
             logger.info('Total number of primer pairs: '+str(len(primersInfo)))
-    else:                            
+    else:
+        # Stores already designed primer pools for draft-primers
+        readyMultiplexes=[]
         # Go through all regions sorted by chromosome and coordinate of start
         print('Creating input parameters for primer3...')
         logger.info('Creating input parameters for primer3...')
@@ -3466,10 +3561,26 @@ else:
         logger.info(' # Number of written amplicons: '+str(coordsNum))
         # If we do not create external primers, we sort amplicons by multiplexes
         if len(regionNameToMultiplex)>0 and not args.embeddedAmpl:
-            multiplexes=sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,args)
+            # Remove from readyMultiplexes amplNames that are not in the current output
+            currentReadyMultiplexes=deepcopy(readyMultiplexes)
+            for i,mult in enumerate(readyMultiplexes):
+                for primerPair in mult:
+                    if primerPair not in outputInternalPrimers.keys():
+                        currentReadyMultiplexes[i].remove(primerPair)
+            multiplexes=sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,args,currentReadyMultiplexes)
             for k,multiplex in enumerate(multiplexes):
                 for ampl in multiplex:
-                    wsw1.write(amplNameToRowNum[ampl],17,k+1)
+                    try:
+                        wsw1.write(amplNameToRowNum[ampl],17,k+1)
+                    except KeyError:
+                        print('ERROR (57)! Unknown amplicon name:')
+                        print('amplNameToRowNum',amplNameToRowNum)
+                        print('\nmultiplexes',multiplexes)
+                        print('\noutputInternalPrimers',outputInternalPrimers.keys())
+                        print('\nglobalMultiplexNums:',globalMultiplexNums.nodes())
+                        print('\nreadyMultiplexes',readyMultiplexes)
+                        print(ampl)
+                        exit(57)
         
         # If we need embedded amplification
         if args.embeddedAmpl:
@@ -3482,7 +3593,7 @@ else:
                 print('Reading file with draft primers and checking them for interactions...')
                 logger.info('Reading file with draft primers and checking them for interactions...')
                 # Read file with draft primers
-                extPrimersInfo,extPrimersInfoByChrom,totalDraftPrimersNum=readDraftPrimers(args.draftFile,args,external=True)
+                extPrimersInfo,extPrimersInfoByChrom,totalDraftPrimersNum,primerPairToMultiplex=readDraftPrimers(args.draftFile,args,external=True)
                 print(' # Number of external primer pairs from draft file: '+str(totalDraftPrimersNum))
                 logger.info(' # Number of external primer pairs from draft file: '+str(totalDraftPrimersNum))
                 print(' # That do not form secondary structures: '+str(len(extPrimersInfo)))
@@ -3722,7 +3833,8 @@ else:
                 mpwsRowNum=1
                 for k,(regionName,extPrimers) in enumerate(sorted(outputExternalPrimers.items())):
                     for node in sorted(outputExternalPrimers.keys())[k+1:]:
-                        if node==regionName: continue
+                        if node==regionName:
+                            continue
                         fit,problem=checkPrimersFit(extPrimers[0:2]+extPrimers[3:6],
                                                     outputExternalPrimers[node],
                                                     args.minMultDimerdG1,args.minMultDimerdG2,
@@ -3773,7 +3885,7 @@ else:
                     localMultiplexNums=globalMultiplexNums.subgraph(containerNodes+leftUnsortedAmpls)
                     # Contains amplicons that were sorted to current multiplex
                     cls=[]
-                    cls=makeFinalMultiplexes(localMultiplexNums,[],len(mults),True)
+                    cls=makeFinalMultiplexes(localMultiplexNums,currentReadyMultiplexes,len(mults),len(mults),True)
                     multiplexes.extend(cls)
                     # Calculate how many amplicons were sorted to current multiplex
                     sumLen=sum([len(x) for x in cls])
