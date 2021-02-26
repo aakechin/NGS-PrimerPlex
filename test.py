@@ -108,11 +108,11 @@ cmd=['python3',thisDir+'getGeneRegions.py',
 if args.refDir:
     cmd.extend(['-ref',args.refDir])
 else:
-    cmd.extend(['-ref','/hg19'])
+    cmd.extend(['-ref','/NGS-PrimerPlex/hg19'])
 if args.wholeGenomeRef:
     cmd.extend(['-wgref',args.wholeGenomeRef])
 else:
-    cmd.extend(['-wgref','/hg19/ucsc.hg19.fasta'])
+    cmd.extend(['-wgref','/NGS-PrimerPlex/hg19/ucsc.hg19.fasta'])
 process=sp.Popen(cmd,shell=False,
                  stdout=sp.PIPE,stderr=sp.STDOUT,
                  universal_newlines=True)
@@ -156,11 +156,11 @@ cmd=['python3',thisDir+'NGS_primerplex.py',
 if args.wholeGenomeRef:
     cmd.extend(['-ref',args.wholeGenomeRef])
 else:
-    cmd.extend(['-ref','/hg19/ucsc.hg19.fasta'])
+    cmd.extend(['-ref','/NGS-PrimerPlex/hg19/ucsc.hg19.fasta'])
 if args.dbSnpVcfFile:
     cmd.extend(['-snps','-dbsnp',args.dbSnpVcfFile])
 elif os.path.exists('/hg19/common_all_20180423_hg19.vcf.gz'):
-    cmd.extend(['-snps','-dbsnp','/hg19/common_all_20180423_hg19.vcf.gz'])    
+    cmd.extend(['-snps','-dbsnp','/NGS-PrimerPlex/hg19/common_all_20180423_hg19.vcf.gz'])    
 process=sp.Popen(cmd,shell=False,
                  stdout=sp.PIPE,stderr=sp.STDOUT,
                  universal_newlines=True)
@@ -233,11 +233,11 @@ cmd=['python3',thisDir+'NGS_primerplex.py',
 if args.wholeGenomeRef:
     cmd.extend(['-ref',args.wholeGenomeRef])
 else:
-    cmd.extend(['-ref','/hg19/ucsc.hg19.fasta'])
+    cmd.extend(['-ref','/NGS-PrimerPlex/hg19/ucsc.hg19.fasta'])
 if args.dbSnpVcfFile:
     cmd.extend(['-snps','-dbsnp',args.dbSnpVcfFile])
-elif os.path.exists('/hg19/common_all_20180423_hg19.vcf.gz'):
-    cmd.extend(['-snps','-dbsnp','/hg19/common_all_20180423_hg19.vcf.gz'])    
+elif os.path.exists('/NGS-PrimerPlex/hg19/common_all_20180423_hg19.vcf.gz'):
+    cmd.extend(['-snps','-dbsnp','/NGS-PrimerPlex/hg19/common_all_20180423_hg19.vcf.gz'])    
 process=sp.Popen(cmd,shell=False,
                  stdout=sp.PIPE,stderr=sp.STDOUT,
                  universal_newlines=True)
@@ -288,11 +288,11 @@ cmd=['python3',thisDir+'NGS_primerplex.py',
 if args.wholeGenomeRef:
     cmd.extend(['-ref',args.wholeGenomeRef])
 else:
-    cmd.extend(['-ref','/hg19/ucsc.hg19.fasta'])
+    cmd.extend(['-ref','/NGS-PrimerPlex/hg19/ucsc.hg19.fasta'])
 if args.dbSnpVcfFile:
     cmd.extend(['-snps','-dbsnp',args.dbSnpVcfFile])
-elif os.path.exists('/hg19/common_all_20180423_hg19.vcf.gz'):
-    cmd.extend(['-snps','-dbsnp','/hg19/common_all_20180423_hg19.vcf.gz'])    
+elif os.path.exists('/NGS-PrimerPlex/hg19/common_all_20180423_hg19.vcf.gz'):
+    cmd.extend(['-snps','-dbsnp','/NGS-PrimerPlex/hg19/common_all_20180423_hg19.vcf.gz'])    
 process=sp.Popen(cmd,shell=False,
                  stdout=sp.PIPE,stderr=sp.STDOUT,
                  universal_newlines=True)
@@ -341,11 +341,11 @@ cmd=['python3',thisDir+'NGS_primerplex.py',
 if args.wholeGenomeRef:
     cmd.extend(['-ref',args.wholeGenomeRef])
 else:
-    cmd.extend(['-ref','/hg19/ucsc.hg19.fasta'])
+    cmd.extend(['-ref','/NGS-PrimerPlex/hg19/ucsc.hg19.fasta'])
 if args.dbSnpVcfFile:
     cmd.extend(['-snps','-dbsnp',args.dbSnpVcfFile])
-elif os.path.exists('/hg19/common_all_20180423_hg19.vcf.gz'):
-    cmd.extend(['-snps','-dbsnp','/hg19/common_all_20180423_hg19.vcf.gz'])    
+elif os.path.exists('/NGS-PrimerPlex/hg19/common_all_20180423_hg19.vcf.gz'):
+    cmd.extend(['-snps','-dbsnp','/NGS-PrimerPlex/hg19/common_all_20180423_hg19.vcf.gz'])    
 process=sp.Popen(cmd,shell=False,
                  stdout=sp.PIPE,stderr=sp.STDOUT,
                  universal_newlines=True)
@@ -394,11 +394,11 @@ cmd=['python3',thisDir+'NGS_primerplex.py',
 if args.wholeGenomeRef:
     cmd.extend(['-ref',args.wholeGenomeRef])
 else:
-    cmd.extend(['-ref','/hg19/ucsc.hg19.fasta'])
+    cmd.extend(['-ref','/NGS-PrimerPlex/hg19/ucsc.hg19.fasta'])
 if args.dbSnpVcfFile:
     cmd.extend(['-snps','-dbsnp',args.dbSnpVcfFile])
-elif os.path.exists('/hg19/common_all_20180423_hg19.vcf.gz'):
-    cmd.extend(['-snps','-dbsnp','/hg19/common_all_20180423_hg19.vcf.gz'])    
+elif os.path.exists('/NGS-PrimerPlex/hg19/common_all_20180423_hg19.vcf.gz'):
+    cmd.extend(['-snps','-dbsnp','/NGS-PrimerPlex/hg19/common_all_20180423_hg19.vcf.gz'])    
 process=sp.Popen(cmd,shell=False,
                  stdout=sp.PIPE,stderr=sp.STDOUT,
                  universal_newlines=True)
@@ -445,11 +445,11 @@ cmd=['python3',thisDir+'NGS_primerplex.py',
 if args.wholeGenomeRef:
     cmd.extend(['-ref',args.wholeGenomeRef])
 else:
-    cmd.extend(['-ref','/hg19/ucsc.hg19.fasta'])
+    cmd.extend(['-ref','/NGS-PrimerPlex/hg19/ucsc.hg19.fasta'])
 if args.dbSnpVcfFile:
     cmd.extend(['-snps','-dbsnp',args.dbSnpVcfFile])
-elif os.path.exists('/hg19/common_all_20180423_hg19.vcf.gz'):
-    cmd.extend(['-snps','-dbsnp','/hg19/common_all_20180423_hg19.vcf.gz'])    
+elif os.path.exists('/NGS-PrimerPlex/hg19/common_all_20180423_hg19.vcf.gz'):
+    cmd.extend(['-snps','-dbsnp','/NGS-PrimerPlex/hg19/common_all_20180423_hg19.vcf.gz'])    
 process=sp.Popen(cmd,shell=False,
                  stdout=sp.PIPE,stderr=sp.STDOUT,
                  universal_newlines=True)
@@ -490,11 +490,11 @@ else:
 ##if args.refDir:
 ##    cmd.extend(['-ref',args.refDir])
 ##else:
-##    cmd.extend(['-ref','/hg19'])
+##    cmd.extend(['-ref','/NGS-PrimerPlex/hg19'])
 ##if args.wholeGenomeRef:
 ##    cmd.extend(['-wgref',args.wholeGenomeRef])
 ##else:
-##    cmd.extend(['-wgref','/hg19/ucsc.hg19.fasta'])
+##    cmd.extend(['-wgref','/NGS-PrimerPlex/hg19/ucsc.hg19.fasta'])
 ##process=sp.Popen(cmd,shell=False,
 ##                 stdout=sp.PIPE,stderr=sp.STDOUT,
 ##                 universal_newlines=True)
@@ -520,11 +520,11 @@ else:
 ##if args.wholeGenomeRef:
 ##    cmd.extend(['-ref',args.wholeGenomeRef])
 ##else:
-##    cmd.extend(['-ref','/hg19/ucsc.hg19.fasta'])
+##    cmd.extend(['-ref','/NGS-PrimerPlex/hg19/ucsc.hg19.fasta'])
 ##if args.dbSnpVcfFile:
 ##    cmd.extend(['-snps','-dbsnp',args.dbSnpVcfFile])
-##elif os.path.exists('/hg19/common_all_20180423_hg19.vcf.gz'):
-##    cmd.extend(['-snps','-dbsnp','/hg19/common_all_20180423_hg19.vcf.gz'])    
+##elif os.path.exists('/NGS-PrimerPlex/hg19/common_all_20180423_hg19.vcf.gz'):
+##    cmd.extend(['-snps','-dbsnp','/NGS-PrimerPlex/hg19/common_all_20180423_hg19.vcf.gz'])    
 ##process=sp.Popen(cmd,shell=False,
 ##                 stdout=sp.PIPE,stderr=sp.STDOUT,
 ##                 universal_newlines=True)
