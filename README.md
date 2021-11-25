@@ -26,11 +26,11 @@ Save new settings (click OK), turn off your VM (if it was turned on previously) 
 At this step, users also have two options of NGS-PrimerPlex use: in the command-line and with GUI.
 
 ### Command-line version
-If you downloaded version with previously uploaded hg19 reference (aakechin/ngs-primerplex:latest), you will have to unzip reference genome FASTA-file:
+If you downloaded version with previously uploaded hg19 reference (aakechin/ngs-primerplex:latest), you will have to gunzip reference genome FASTA-file:
 
 `docker run -it --entrypoint 'bash' --name ngs_primerplex_ref -v '<directory where you are going to design new primers>:<name of this directory in the container>' aakechin/ngs-primerplex:latest`, where -v option lets you to mount some of your local directory to the virtual machine (container). This command will put you into the virtual machine command line. Note, that Windows users can only mount folders from drives that were shared and they should be written as '/C/...'
 
-`unzip NGS-PrimerPlex/hg19/ucsc.hg19.fasta*.gz`
+`gunzip NGS-PrimerPlex/hg19/ucsc.hg19.fasta*.gz`
 
 The last command will take some time. After that, you can run testing of NGS-PrimerPlex (for version without uploaded reference genome you initially need to prepare your reference genome, see **"Reference genome"**):
 
