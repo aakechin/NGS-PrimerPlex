@@ -39,6 +39,17 @@ def getChrNum(geneName,refDir):
         print('It will be created and this process will take some time...')
         try:
             geneNameToChromosomes=createGeneNameToChromosomeFile(refDir)
+        except ValueError as e:
+            if os.path.exists(refDir+'geneNameToChromosome.csv'):
+                os.remove(refDir+'geneNameToChromosome.csv')
+            if 'More than one record found in handle' in str(e):
+                print('ERROR (17)! Table for converting gene name into chromosome could not be created ')
+                print('because some of GenBank files used contain more than one fragment. Each fragment '
+                      '(e.g. chromosome or plasmid) should be written into distinct GenBank-file')
+                exit(17)
+            else:
+                print('ERROR (12)! Table for converting gene name into chromosome could not be created')
+                exit(12)
         except:
             if os.path.exists(refDir+'geneNameToChromosome.csv'):
                 os.remove(refDir+'geneNameToChromosome.csv')
@@ -149,7 +160,7 @@ def writeGeneNameToChromosomeFile(geneNameToChromosomes,refDir):
         for geneName,chroms in geneNameToChromosomes.items():
             file.write('\t'.join([geneName,*chroms])+'\n')
 
-def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs={}):
+def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons=[],exons=[],nucs=[]):
     # Convert list of exons coordinates to dictionary with exon numbers as keys and coordinates as values
     mRNA={}
     for exonNum,part in enumerate(pro_mRNA):
@@ -198,7 +209,8 @@ def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs
                     break
                 else: break
         mRNA=coding_mRNA.copy()
-    if targetGene not in codons.keys() and targetGene not in exons.keys():
+    if (len(codons)==0 and
+        len(exons)==0):
         for exonNum,subf in mRNA.items():
             if exonNum+1!=1 and exonNum+1!=len(mRNA):
                 resultFile.write('\t'.join([chrs[targetGene],
@@ -227,7 +239,7 @@ def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs
                 print(exonNum+1,subf[2])
                 exit(1)
     else:
-        if targetGene in codons.keys():
+        if len(codons)>0:
             exLen=0
             exLens={}
             # If the 1st coding exon is no the 1st exon
@@ -236,7 +248,7 @@ def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs
             for exonNum,subf in sorted(mRNA.items()):
                 exLen+=subf[1]-subf[0]
                 exLens[exonNum]=exLen
-            for regNum,reg in enumerate(nucs[targetGene]):
+            for regNum,reg in enumerate(nucs):
                 for z,r in enumerate(reg):
                     exFound=False
                     for j,exLen in exLens.items():
@@ -262,10 +274,10 @@ def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs
                 if not exFound:
                     print('ERROR (2)! Exon for region '+str(reg)+' of gene '+targetGene+' was not determined correctly')
                     exit(2)
-                if codons[targetGene][regNum][0]==codons[targetGene][regNum][1]:
-                    regStr=str(codons[targetGene][regNum][0])
+                if codons[regNum][0]==codons[regNum][1]:
+                    regStr=str(codons[regNum][0])
                 else:
-                    regStr='_'.join(list(map(str,codons[targetGene][regNum])))
+                    regStr='_'.join(list(map(str,codons[regNum])))
                 # If exons for the start and for the end of region are equal
                 if exNum1==exNum2:
                     if list(mRNA.values())[0][2]==-1:
@@ -343,8 +355,8 @@ def writeRegions(resultFile,targetGene,pro_mRNA,cds=None,codons={},exons={},nucs
                                                     str(mRNA[exNum2][0]+1+fromStart2),
                                                     '_'.join([targetGene,'p'+regStr]),
                                                     '1','B','NotW'])+'\n')
-        if targetGene in exons.keys():
-            for exRange in exons[targetGene]:
+        if len(exons)>0:
+            for exRange in exons:
                 for exonNum in range(exRange[0]-1,exRange[1]):
                     if exonNum not in mRNA.keys():
                         print('ERROR (4)! Exon '+str(exonNum)+' includes noncoding sequences or does not exist.')
@@ -414,8 +426,8 @@ if refDir[-1]!=os.path.sep:
 print('Reading input file and getting chromosome numbers...')
 targetGenes=[]
 chrs={}
-codons={}
-exons={}
+codons=[]
+exons=[]
 geneListFile=open(args.geneListFile)
 for string in geneListFile:
     if 'Gene\tExons' in string:
@@ -423,39 +435,39 @@ for string in geneListFile:
     cols=string[:-1].split('\t')
     print(cols[0])
     targetGenes.append(cols[0])
+    exons.append([])
+    codons.append([])
     chrs[cols[0]]=getChrNum(cols[0],refDir)
     if chrs[cols[0]]==None:
         print('ERROR (5)! Gene '+cols[0]+' was not found in the Gene database of NCBI!')
         exit(5)
     if not (len(cols)<2 or cols[1]==''):
         ex=cols[1].split(',')
-        exons[cols[0]]=[]
         for e in ex:
             if '-' in e:
                 ep=e.split('-')
-                if [int(ep[0]),int(ep[1])] not in exons[cols[0]]:
-                    exons[cols[0]].append([int(ep[0]),int(ep[1])])
+                if [int(ep[0]),int(ep[1])] not in exons[-1]:
+                    exons[-1].append([int(ep[0]),int(ep[1])])
             else:
-                if [int(e),int(e)] not in exons[cols[0]]:
-                    exons[cols[0]].append([int(e),int(e)])
+                if [int(e),int(e)] not in exons[-1]:
+                    exons[-1].append([int(e),int(e)])
     if not (len(cols)<3 or cols[2]==''):
         ex=cols[2].split(',')
-        codons[cols[0]]=[]
         for e in ex:
             if '-' in e:
                 ep=e.split('-')
-                if [int(ep[0]),int(ep[1])] not in codons[cols[0]]:
-                    codons[cols[0]].append([int(ep[0]),int(ep[1])])
+                if [int(ep[0]),int(ep[1])] not in codons[-1]:
+                    codons[-1].append([int(ep[0]),int(ep[1])])
             else:
-                if [int(e),int(e)] not in codons[cols[0]]:
-                    codons[cols[0]].append([int(e),int(e)])
+                if [int(e),int(e)] not in codons[-1]:
+                    codons[-1].append([int(e),int(e)])
 geneListFile.close()
 print('Done')
 
 # Library nucs contains ranges of nucleotides for which we need to line up primers
 # we get it from codons list
 nucs=copy.deepcopy(codons)
-for key,value in nucs.items():
+for key,value in enumerate(nucs):
     for j,l in enumerate(value):
         nucs[key][j][0]=l[0]*3-2
         nucs[key][j][1]=l[1]*3
@@ -469,7 +481,7 @@ mainProteins={'NRG1':'NP_039251.'}
 ## TO DO:
 # Maybe add this values to input table for such complex genes?
 print('Getting genome regions for the input genes...')
-for t in targetGenes:
+for geneNum,t in enumerate(targetGenes):
     print(t)
     # Here, chrs[t] will have chromosome name,
     # but GB-files can be named by chromosome numbers
@@ -504,7 +516,7 @@ for t in targetGenes:
                 mRNA_exons=f.location.parts
                 if args.includeNonCoding and t not in codons.keys():
                     geneFound=True
-                    writeRegions(resultFile,t,mRNA_exons,None,codons,exons,nucs)
+                    writeRegions(resultFile,t,mRNA_exons,None,codons[geneNum],exons[geneNum],nucs[geneNum])
                     break
             elif (len(transcriptPat.findall(f.qualifiers['product'][0]))==0 or
                 transcriptPat.findall(f.qualifiers['product'][0])[0]=='1' or
@@ -512,7 +524,7 @@ for t in targetGenes:
                 mRNA_exons=f.location.parts
                 if args.includeNonCoding and t not in codons.keys():
                     geneFound=True
-                    writeRegions(resultFile,t,mRNA_exons,None,codons,exons,nucs)
+                    writeRegions(resultFile,t,mRNA_exons,None,codons[geneNum],exons[geneNum],nucs[geneNum])
                     break
             elif len(transcriptPat.findall(f.qualifiers['product'][0]))>0:
                 try:
@@ -544,7 +556,8 @@ for t in targetGenes:
                 ('note' in f.qualifiers.keys() and
                  len(transcriptMatch)>0 and
                  (transcriptMatch[0]=='1' or
-                  transcriptMatch[0]=='a'))):
+                  transcriptMatch[0]=='a' or
+                  transcriptMatch[0]=='2'))):
                 geneFound=True
                 if (len(mRNA_exons)==0 and
                     len(several_mRNA_isoformsNums)==0 and
@@ -552,7 +565,7 @@ for t in targetGenes:
                     print('WARNING (7)! mRNA feature was not found in the GenBank file '+refDir+chrs[t]+'.gb for the gene '+t+'!')
                     mRNA_exons=f.location.parts
                     if args.includeNonCoding and t not in codons.keys():
-                        writeRegions(resultFile,t,mRNA_exons,None,codons,exons,nucs)
+                        writeRegions(resultFile,t,mRNA_exons,None,codons[geneNum],exons[geneNum],nucs[geneNum])
                         break
                 elif (len(mRNA_exons)==0 and
                       (len(several_mRNA_isoformsNums)>0 or
@@ -562,12 +575,14 @@ for t in targetGenes:
                     else:
                         mRNA_exons=sorted(several_mRNA_isoformsWords.items())[0][1]
                     if args.includeNonCoding and t not in codons.keys():
-                        writeRegions(resultFile,t,mRNA_exons,None,codons,exons,nucs)
+                        writeRegions(resultFile,t,mRNA_exons,None,codons[geneNum],exons[geneNum],nucs[geneNum])
                         break
-                writeRegions(resultFile,t,mRNA_exons,f.location.parts,codons,exons,nucs)
+                writeRegions(resultFile,t,mRNA_exons,f.location.parts,codons[geneNum],exons[geneNum],nucs[geneNum])
                 break
     if not geneFound:
         print('ERROR (8)! Gene with name "'+t+'" was not found in chromosome '+chrs[t])
+        print(several_mRNA_isoformsWords)
+        print(several_mRNA_isoformsNums)
         exit(8)
 resultFile.close()
 print('NGS-PrimerPlex finished!')
