@@ -2644,7 +2644,7 @@ def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,ar
                 print('  # Number of amplicons in multiplex',mults[z],len(cl))
                 logger.info('  # Number of amplicons in multiplex '+mults[z]+': '+str(len(cl)))
         # The number of primer pairs already sorted is less than the number of primer pairs that we wanted to sort
-        elif sum([len(x) for x in cls])<len(localMultiplexNums):
+        elif sumLen<len(localMultiplexNums):
             print('Number of designed multiplexes:',len(cls))
             logger.warn(' # Number of designed multiplexes: '+str(len(cls)))
             for z,cl in enumerate(cls):
@@ -2669,10 +2669,12 @@ def sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,ar
             print('Such error can be due to the use of the draft-file with the number of multiplexes more than it is defined in the regions file')
             print(localMultiplexNums.nodes())
             print(cls)
+            print(readyMultiplexes)
             logger.error('UNKNOWN ERROR (27)! Number of nodes in the final graph is more than in the initial graph!')
             logger.error('Such error can be due to the use of the draft-file with the number of multiplexes more than it is defined in the regions file')
             logger.error(str(localMultiplexNums.nodes()))
             logger.error(str(cls))
+            logger.error(readyMultiplexes)
             exit(27)
     return(multiplexes)
 
@@ -3925,9 +3927,14 @@ else:
                     # Replace it in the Graph
                     if amplNamesToOutput[targetName][1] in globalMultiplexNums.nodes():
                         globalMultiplexNums.add_node(amplNamesToOutput[targetName][1]+'_1')
-                        for node in globalMultiplexNums[amplNamesToOutput[targetName][1]]:
+                        for node in globalMultiplexNums[amplNamesToOutput[targetName][1]].keys():
                             globalMultiplexNums.add_edge(node,amplNamesToOutput[targetName][1]+'_1')
                         globalMultiplexNums.remove_node(amplNamesToOutput[targetName][1])
+                    # Replace it in the globalMultiplexesContainer
+                    for key in globalMultiplexesContainer.keys():
+                        if amplNamesToOutput[targetName][1] in globalMultiplexesContainer[key]:
+                            globalMultiplexesContainer[key].append(amplNamesToOutput[targetName][1]+'_1')
+                            globalMultiplexesContainer[key].remove(amplNamesToOutput[targetName][1])
                     # Replace it in the amplNameToRowNum
                     amplNameToRowNum[amplNamesToOutput[targetName][1]+'_1']=amplNameToRowNum[amplNamesToOutput[targetName][1]]
                     amplNameToRowNum.pop(amplNamesToOutput[targetName][1])
