@@ -1081,13 +1081,6 @@ def checkPrimersForUridine(leftPrimer,rightPrimer,args,
                                          'U',
                                          rightPrimer[rightPosT1+1:]])
             break
-##        print(leftPrimer)
-##        print(leftPrimerWithU)
-##        print(leftPosesTvar,leftPosT1)
-##        print(rightPrimer)
-##        print(rightPrimerWithU)
-##        print(rightPosesTvar,rightPosT1)
-##        input()
         return(leftPrimerWithU,
                rightPrimerWithU)
     return(False)
@@ -2219,7 +2212,6 @@ def joinAmpliconsToBlocks(poolArgs):
                                             nodeToPrimerDimers[node]=0
                                         nodeToPrimerDimers[node]+=1
                         # Remove primer pair with the highest number of primer dimers that prevent getting shortest path
-##                        triesToRemove=0
                         for node,value in sorted(nodeToPrimerDimers.items(),
                                                  key=lambda item:item[1],
                                                  reverse=True):
@@ -2227,20 +2219,8 @@ def joinAmpliconsToBlocks(poolArgs):
                             logger.info('The number of nodes that form primer dimers: '+str(len(nodeToPrimerDimers.keys())))
                             logger.info('The total number of nodes: '+str(len(blockGraph.nodes())))
                             blockGraph.remove_node(node)
-##                            triesToRemove+=1
-##                            if triesToRemove>=args.primernum1:
                             break
                         continue
-##                        print('ERROR (64)! Some problems with networkx Graph constructed. Contact with the program developers')
-##                        logger.error('Some problems with networkx Graph constructed. Contact with the program developers')
-##                        print(firstNodes[i],lastNodes[i])
-##                        print('The following primer pairs form strong dimers:')
-##                        for node in blockGraph.nodes():
-##                            if node in primerPairPairsFormingDimers.keys():
-##                                for primerPairName in primerPairPairsFormingDimers:
-##                                    if primerPairName in blockGraph.nodes():
-##                                        print(node,primerPairName)
-##                        return(None,64,leftGoodPrimers)
                     else:
                         print('ERROR (25)! Too low value of maximal overlap (-maxoverlap) or of initially designed primers (-primernum): '+str(args.maxoverlap)+' and '+str(args.primernum1)+'. Try to increase one of them')
                         logger.error(' Too low value of maximal overlap (-maxoverlap) or of initially designed primers (-primernum): '+str(args.maxoverlap)+' and '+str(args.primernum1)+'. Try to increase one of them')
@@ -2279,13 +2259,6 @@ def joinAmpliconsToBlocks(poolArgs):
                         blockGraph.remove_node(node)
                         break
                     tries=0
-##                    print('ERROR (62)! Too low value of initially designed primers (-primernum): '+str(args.primernum1)+'. Try to increase it')
-##                    logger.error(' Too low value of initially designed primers (-primernum): '+str(args.primernum1)+'. Try to increase it')
-##                    print(str(lastNodes[i])+' is not reachable from '+str(firstNodes[i]))
-##                    logger.error(str(lastNodes[i])+' is not reachable from '+str(firstNodes[i]))
-##                    logger.error(str(blockGraph.edges()))
-##                    logger.error(str(chromPrimersInfoByChrom))
-##                    exit(62)
             g1=blockGraph.subgraph(path)
             shortestPaths={path:len(path)}
             minPathLen=len(path)
@@ -2587,7 +2560,6 @@ def makeFinalMultiplexes(initialGraph,multiplexes=[],
         maxNodesNum=math.ceil(len(initialGraph)/currentMultNum)
         cls=[]
         edgelist=graph.edges()
-##        random.shuffle(edgelist)
         graph=nx.Graph(edgelist)
         for i,cl in enumerate(clique.find_cliques(graph)):
             if len(cl)>1:
@@ -2891,8 +2863,6 @@ def calcThreeStrikeEndHairpin(seq,
         # When we have the longest part of end3 that is revComplement
         # to some part of seq,
         # approximately estimate its strength by calculating dG for dimer
-##        print(subSeq)
-##        print(end3)
         dG=primer3.calcHeterodimer(subSeq,end3,
                                    mv_conc=mv_conc,dv_conc=dv_conc,
                                    dntp_conc=dntp_conc,dna_conc=dna_conc).dg/1500
@@ -3956,7 +3926,7 @@ else:
                     if amplNamesToOutput[targetName][1] in globalMultiplexNums.nodes():
                         globalMultiplexNums.add_node(amplNamesToOutput[targetName][1]+'_1')
                         for node in globalMultiplexNums[amplNamesToOutput[targetName][1]]:
-                            globalMultiplexNums.add_egde(node,amplNamesToOutput[targetName][1]+'_1')
+                            globalMultiplexNums.add_edge(node,amplNamesToOutput[targetName][1]+'_1')
                         globalMultiplexNums.remove_node(amplNamesToOutput[targetName][1])
                     # Replace it in the amplNameToRowNum
                     amplNameToRowNum[amplNamesToOutput[targetName][1]+'_1']=amplNameToRowNum[amplNamesToOutput[targetName][1]]
@@ -4381,7 +4351,6 @@ else:
                 multiplexes=sortAmpliconsToMultiplexes(globalMultiplexesContainer,globalMultiplexNums,args,currentReadyMultiplexes)
                 for k,multiplex in enumerate(multiplexes):
                     for ampl in multiplex:
-                        print(ampl,amplNameToRowNum[ampl])
                         wsw2.write(amplNameToRowNum[ampl],18,k+1)
                         wsw1.write(amplNameToRowNum[ampl],17,k+1)
         wbw.close()
