@@ -428,7 +428,6 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
                              primersInfoByChrom=None,
                              amplNames=None,primersToAmplNames=None):
     # chrom is string
-##    p=ThreadPool(args.threads)
     p=Pool(args.threads)
     # Dictionary for storing primers' info
     # Contains chromosome names
@@ -448,19 +447,13 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
     totalPrimersNum=0
     totalDifPrimersNum=0
     regionsWithoutPrimers=[]
-##    results=[]
     poolArgs=[]
     wholeWork=0
-##    wholeWork=len(primer3Params.keys())
     for i,(regionName,inputParams) in enumerate(primer3Params.items()):
         for inputParam in inputParams:
             poolArgs.append((regionName,inputParam,False,args))
             wholeWork+=1
-##            results.append(p.apply_async(runPrimer3,(regionName,inputParam,False,args)))
-##        showPercWork(i+1,wholeWork,args.gui)
-##    print()
     doneWork=0
-##    wholeWork=len(results)
     primerDesignExplains={}
     internalExplainToWords=['left min end GC',
                             'right min end GC',
@@ -473,7 +466,6 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
                             'right homodimer end3',
                             'heterodimer end3',
                             'absense of T for replacement with U']
-##    for res in results:
     for res in p.imap_unordered(runPrimer3,poolArgs):
         doneWork+=1
         showPercWork(doneWork,wholeWork,args.gui)
@@ -673,7 +665,7 @@ def runPrimer3(poolArgs):
                 if 'PRIMER_RIGHT_ADAPTER' in primerTags.keys():
                     rightPrimer=primerTags['PRIMER_RIGHT_ADAPTER']+primers[2*i+1]
                 else:
-                    rightPrimer=primers[2*i]
+                    rightPrimer=primers[2*i+1]
                 leftHairpin=primer3.calcHairpin(leftPrimer,
                                                 mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
                                                 dv_conc=primerTags['PRIMER_SALT_DIVALENT'],
@@ -739,6 +731,11 @@ def runPrimer3(poolArgs):
                                 rightHomodimerEnd3<args.minMultDimerdG1,
                                 heterodimerEnd3<args.minMultDimerdG1,
                                 uridinesCanBeInserted]
+##                if primers[2*i+1]=='TTGCACCTGTTTTGTTGTGTACAC':
+##                    print(primers[2*i+1])
+##                    print(internalChecks)
+##                    print(rightHomodimerEnd3)
+##                    print(rightHomodimer)
                 if True in internalChecks:
                     for k,check in enumerate(internalChecks):
                         if check:
@@ -832,7 +829,7 @@ def runPrimer3(poolArgs):
                 if 'PRIMER_RIGHT_ADAPTER' in primerTags.keys():
                     rightPrimer=primerTags['PRIMER_RIGHT_ADAPTER']+primers[2*i+1]
                 else:
-                    rightPrimer=primers[2*i]
+                    rightPrimer=primers[2*i+1]
                 rightEnd3_rc=str(Seq.Seq(primers[2*i+1][-4:]).reverse_complement())
                 rightHairpin=primer3.calcHairpin(rightPrimer,
                                                  mv_conc=primerTags['PRIMER_SALT_MONOVALENT'],
@@ -1178,8 +1175,10 @@ def readDraftPrimers(draftFile,args,external=False):
             # leftAdapter=None,rightAdapter=None)
             # primers arguments have the following format:
             # leftPrimer,rightPrimer,chrom,amplStart,amplEnd
-            result=checkPrimersFit([*row[0].split('_'),str(chrom),int(row[1]),int(row[3])],
-                                   [*row[0].split('_'),'',str(chrom),int(row[1]),int(row[3])],
+            leftPrimer=row[0].split('_')[0].upper().replace('U','T')
+            rightPrimer=row[0].split('_')[1].upper().replace('U','T')
+            result=checkPrimersFit([leftPrimer,rightPrimer,str(chrom),int(row[1]),int(row[3])],
+                                   [leftPrimer,rightPrimer,'',str(chrom),int(row[1]),int(row[3])],
                                    args.minMultDimerdG1,
                                    args.minMultDimerdG2,
                                    1000000,[],args.mvConc,args.dvConc,
@@ -1192,13 +1191,16 @@ def readDraftPrimers(draftFile,args,external=False):
                 logger.warning(row[0].replace('_',', ')+' due to '+result[1])
                 if not args.ignoreBadPrimersInDraft:
                     continue
-            primersInfo[row[0]]=[[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]],
-                                 [int(row[5]),int(row[6])],
-                                 int(row[7]),int(row[8]),str(chrom)]
+            primerPair='_'.join([leftPrimer,
+                                 rightPrimer])
+            primersInfo[primerPair]=[[[int(row[1]),int(row[2])],
+                                      [int(row[3]),int(row[4])]],
+                                     [int(row[5]),int(row[6])],
+                                     int(row[7]),int(row[8]),str(chrom)]
             if chromInt not in primersInfoByChrom.keys():
-                primersInfoByChrom[chromInt]={row[0]:[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]}
-            elif row[0] not in primersInfoByChrom[chromInt].keys():
-                primersInfoByChrom[chromInt][row[0]]=[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]
+                primersInfoByChrom[chromInt]={primerPair:[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]}
+            elif primerPair not in primersInfoByChrom[chromInt].keys():
+                primersInfoByChrom[chromInt][primerPair]=[[int(row[1]),int(row[2])],[int(row[3]),int(row[4])]]
         else:
             chrom=getChrNum(row[4])
             if chrom==None:
@@ -1216,8 +1218,11 @@ def readDraftPrimers(draftFile,args,external=False):
             # leftAdapter=None,rightAdapter=None)
             # primers arguments have the following format:
             # leftPrimer,rightPrimer,chrom,amplStart,amplEnd
-            result=checkPrimersFit([row[1],row[2],str(chrom),int(row[5]),int(row[6])],
-                                   [row[1],row[2],'',str(chrom),int(row[5]),int(row[6])],
+            # Replace U to T
+            leftPrimer=row[1].upper().replace('U','T')
+            rightPrimer=row[2].upper().replace('U','T')
+            result=checkPrimersFit([leftPrimer,rightPrimer,str(chrom),int(row[5]),int(row[6])],
+                                   [leftPrimer,rightPrimer,'',str(chrom),int(row[5]),int(row[6])],
                                    args.minMultDimerdG1,
                                    args.minMultDimerdG2,
                                    1000000,[],args.mvConc,args.dvConc,
@@ -1230,7 +1235,8 @@ def readDraftPrimers(draftFile,args,external=False):
                 logger.warning(', '.join(row[1:3])+' due to '+result[1])
                 if  not args.ignoreBadPrimersInDraft:
                     continue
-            primerPair='_'.join(row[1:3])
+            primerPair='_'.join([leftPrimer,
+                                 rightPrimer])
             primersInfo[primerPair]=[[[int(row[5]),int(row[12])],[int(row[6]),int(row[13])]],
                                      [int(row[10]),int(row[11])],
                                      int(row[7]),100,str(chrom)]
@@ -1320,7 +1326,7 @@ def getRegionsUncoveredByDraftPrimers(allRegions,primersInfoByChrom,primerPairTo
     if uncoveredPositions>0:
         for chrom,poses in uncoveredRegions.items():
             for pos  in poses:
-                print(chrom,pos)
+##                print(chrom,pos)
                 logger.info(' '.join([str(chrom),
                                       str(pos)]))
     return(uncoveredRegions,amplNames,primersToAmplNames,readyMultiplexes)
