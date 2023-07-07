@@ -518,13 +518,13 @@ def constructInternalPrimers(primer3Params,regionNameToChrom,
             # Calculating coordinates of primers on a chromosome
             # If it is near the start of a chromosome
             if start-args.maxAmplLen<0:
-                primersCoords[2*i][0]=primersCoords[2*i][0]
+                primersCoords[2*i][0]=primersCoords[2*i][0]+1
                 ## If we constructed only left primer
                 if primersCoords[2*i+1][0]==0:
                     # We set coordinate of the right primer as the most right position of this amplicon
                     primersCoords[2*i+1][0]=args.maxAmplLen
                 else:
-                    primersCoords[2*i+1][0]=primersCoords[2*i+1][0]
+                    primersCoords[2*i+1][0]=primersCoords[2*i+1][0]+1
             else:
                 primersCoords[2*i][0]=primersCoords[2*i][0]+start-args.maxAmplLen # We do not substract 1, because we want to get real coordinate, not number of symbol in coordinate
                 # We substract args.maxAmplLen because it is an addiotional part of chromosome that we wrote to primer3 input file as target sequence
