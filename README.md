@@ -11,11 +11,11 @@ Now users have two options of NGS-PrimerPlex use in docker: (1) with already upl
 
 To use 1st variant, download docker image of NGS-PrimerPlex with the following command:
 
-`docker pull aakechin/ngs-primerplex:latest`
+`docker pull aakechin/ngs-primerplex:full_1.3.4`
 
 To use the 2nd variant, download docker image of NGS-PrimerPlex in the following way:
 
-`docker pull aakechin/ngs-primerplex:native`
+`docker pull aakechin/ngs-primerplex:1.3.4`
 
 __Windows users__ will also have to change some default settings of the Virtual Machines. For Windows 7 it can be done in the Oracle VM VirtualBox, for Windows 10 users in the Docker Settings:
 1. Go to settings of the default virtual machine (VM) -> Shared folders -> Add your hardware drives that will be used in docker, giving them names like '/C/' for disk 'C:\' and turning on options 'Auto-mount' and 'Make Permanent' (if the last one is available).
